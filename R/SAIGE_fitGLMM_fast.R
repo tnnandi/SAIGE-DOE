@@ -778,8 +778,7 @@ fitNULLGLMM = function(plinkFile = "",
 
 
     if (nThreads > 1) {
-        RcppParallel:::setThreadOptions(numThreads = nThreads)
-        cat(nThreads, " threads will be used ", "\n")
+        stop("setting threads via RcppParallel is not allowed")
     }
 
     if (FemaleOnly & MaleOnly) {

@@ -3,8 +3,13 @@
 options(stringsAsFactors=F)
 
 ## load R libraries
+#library(SAIGE, lib.loc="../../install_dir/0.38")
+#library(SAIGE, lib.loc="../../install_dir/0.36.6")
+#library(SAIGE, lib.loc="/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/installSAIGEFolder/0.44.6.3_onlyRunSingleJobsinSetBased")
+.libPaths(c(.libPaths(), "/gpfs/alpine/proj-shared/med112/youngdae/SAIGE-DOE/extdata/R_lib"))
 library(SAIGE)
 require(optparse) #install.packages("optparse")
+require(pbdMPI)
 
 print(sessionInfo())
 
