@@ -730,7 +730,11 @@ fitNULLGLMM = function(plinkFile = "",
 	if(!file.exists(modelOut)){
 		stop("skipModelFitting=TRUE but ", modelOut, " does not exist\n")	   }	
     }else{
-	file.create(modelOut, showWarnings = TRUE)
+        barrier(comm=0)
+        if (comm.rank(comm=0) == 0) {
+            file.create(modelOut, showWarnings = TRUE)
+        }
+        barrier(comm=0)
     }	    
 
     if (useSparseGRMtoFitNULL & plinkFile == ""){
@@ -748,7 +752,11 @@ fitNULLGLMM = function(plinkFile = "",
     	varRatioFile = paste0(outputPrefix_varRatio, ".varianceRatio.txt")
 
     	if (!file.exists(varRatioFile)) {
-            file.create(varRatioFile, showWarnings = TRUE)
+            barrier(comm=0)
+            if (comm.rank(comm=0) == 0) {
+                file.create(varRatioFile, showWarnings = TRUE)
+            }
+            barrier(comm=0)
     	}else {
             if (!IsOverwriteVarianceRatioFile) {
             stop("WARNING: The variance ratio file ", varRatioFile, 
