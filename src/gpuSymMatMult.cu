@@ -27,7 +27,7 @@ gpuSymMatMult::~gpuSymMatMult()
     cublasDestroy((cublasHandle_t)m_handle);
 }
 
-int gpuSymMatMult::set_matrix(int rank, int n_rows, int n_cols, const float *A)
+int gpuSymMatMult::set_matrix(int rank, size_t n_rows, size_t n_cols, const float *A)
 {
     cudaError_t cudaStat;
     cublasStatus_t cublasStat;
@@ -69,7 +69,8 @@ int gpuSymMatMult::set_matrix(int rank, int n_rows, int n_cols, const float *A)
     }
 
     std::cout << "[" << rank << "] "
-              << "GPU memory: " << gpu_free << " / " << gpu_total << std::endl;
+              << "GPU memory: " << gpu_free << " / " << gpu_total 
+              << " requesting: " << m_rows*m_cols*sizeof(*m_A) << std::endl;
 
     cudaStat = cudaMalloc((void**)&m_A, m_rows*m_cols*sizeof(*m_A));
     if (cudaStat != cudaSuccess) {
@@ -137,7 +138,7 @@ out:
 // Perform AA^T*x in two steps.
 //   i)  y = A^T*x
 //   ii) z = Ay
-int gpuSymMatMult::sym_sgemv(int rank, int n_elem, const float *x, float *ret)
+int gpuSymMatMult::sym_sgemv(int rank, size_t n_elem, const float *x, float *ret)
 {
     cudaError_t cudaStat;
     cublasStatus_t cublasStat;
