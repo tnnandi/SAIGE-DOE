@@ -1536,7 +1536,7 @@ arma::fvec gpuParallelCrossProd(arma::fcolvec &bVec) {
 	arma::fvec crossProdVec(N, arma::fill::zeros);
 	arma::fvec local_crossProdVec(N, arma::fill::zeros);
 
-	geno.gpuSNPMatrix.sym_sgemv(rank, bVec.n_elem, bVec.memptr(), local_crossProdVec.memptr());
+	geno.gpuSNPMatrix.sym_sgemv(rank, (size_t)bVec.n_elem, bVec.memptr(), local_crossProdVec.memptr());
 	MPI_Allreduce(local_crossProdVec.memptr(), crossProdVec.memptr(), N,
 	              MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
 	return crossProdVec;
@@ -1817,11 +1817,11 @@ if(isUseSparseSigmaforInitTau | isUseSparseSigmaforModelFitting){
 		          << "Aj = " << Aj << " n_rows = " << A.n_rows << " n_cols = " << A.n_cols << std::endl;
 		std::cout << "[" << rank << "] "
 		          << "A.memptr() in gcc = " << A.memptr() << " pid = " << pid << std::endl;
-		geno.gpuSNPMatrix.set_matrix(rank, A.n_rows, A.n_cols, A.memptr());
+		geno.gpuSNPMatrix.set_matrix(rank, (size_t)A.n_rows, (size_t)A.n_cols, A.memptr());
 
 		int n_global_cols = 0;
 		MPI_Allreduce(&n_cols, &n_global_cols, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-		geno.gpuSNPMatrix.m_global_cols = n_global_cols;
+		geno.gpuSNPMatrix.m_global_cols = (size_t)n_global_cols;
 
         if (n_global_cols != Msub_mafge1perc) {
             std::cerr << "Error: size mismatch: n_global_cols(" << n_global_cols

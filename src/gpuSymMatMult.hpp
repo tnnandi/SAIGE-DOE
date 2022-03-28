@@ -5,9 +5,9 @@ class gpuSymMatMult
 {
 public:
     bool m_isLoaded;
-    int m_rows;
-    int m_cols;
-    int m_global_cols;
+    size_t m_rows;
+    size_t m_cols;
+    size_t m_global_cols;
     void *m_handle;
     float *m_A;
     float *m_x;
@@ -17,7 +17,7 @@ public:
     gpuSymMatMult();
     ~gpuSymMatMult();
 
-    int set_matrix(int rank, int n_rows, int n_cols, const float *A);
-    int sym_sgemv(int rank, int n_elem, const float *x, float *ret);
+    int set_matrix(int rank, size_t n_rows, size_t n_cols, const float *A);
+    int sym_sgemv(int rank, size_t n_elem, const float *x, float *ret);
 };
 #endif // GPU_SYM_MAT_MULT_HPP
