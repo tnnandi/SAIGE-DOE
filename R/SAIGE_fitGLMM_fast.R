@@ -1723,13 +1723,15 @@ scoreTest_SPAGMMAT_forVarianceRatio_binaryTrait = function(obj.glmm.null,
 
 } #for(k in 1:length(listOfMarkersForVarRatio)){
 
-
-  print(varRatioTable)
-  print(varRatioOutFile)
-  write.table(varRatioTable, varRatioOutFile, quote=F, col.names=F, row.names=F)
-  data = read.table(varRatioOutFile, header=F)
-  print(data)
-
+  barrier(comm=0)
+  if (comm.rank(comm=0) == 0) {
+      print(varRatioTable)
+      print(varRatioOutFile)
+      write.table(varRatioTable, varRatioOutFile, quote=F, col.names=F, row.names=F)
+      data = read.table(varRatioOutFile, header=F)
+      print(data)
+  }
+  barrier(comm=0)
 }
 
 
