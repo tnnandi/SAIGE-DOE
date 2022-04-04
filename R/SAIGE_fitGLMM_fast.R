@@ -1186,7 +1186,11 @@ fitNULLGLMM = function(plinkFile = "",
 			modglmm$offset = covoffset
 		}	
 	    } 		    
-            save(modglmm, file = modelOut)
+            barrier(comm=0)
+            if (comm.rank(comm=0) == 0) {
+                save(modglmm, file = modelOut)
+            }
+            barrier(comm=0)
             tau = modglmm$theta
         	    
 	    #varAll = tau[2] + (pi^2)/3
@@ -1319,7 +1323,10 @@ fitNULLGLMM = function(plinkFile = "",
             #}
 	    modglmm$offset = covoffset
 
-            save(modglmm, file = modelOut)
+            barrier(comm=0)
+            if (comm.rank(comm=0) == 0) {
+                save(modglmm, file = modelOut)
+            }
             t_end = proc.time()
             print(t_end)
             cat("t_end - t_begin, fitting the NULL model took\n")
@@ -1401,12 +1408,20 @@ scoreTest_SPAGMMAT_forVarianceRatio_binaryTrait = function(obj.glmm.null,
 						    includeNonautoMarkersforVarRatio){
 
   obj.noK = obj.glmm.null$obj.noK
-  if(file.exists(testOut)){file.remove(testOut)}
+  barrier(comm=0)
+  if (comm.rank(comm=0) == 0) {
+      if(file.exists(testOut)){file.remove(testOut)}
+  }
+  barrier(comm=0)
   
 
 
   resultHeader = c("CHR","SNPID","POS","A1","A2","p.value", "p.value.NA", "Is.converge","var1","var2", "N", "AC", "AF")
-  write(resultHeader,file = testOut, ncolumns = length(resultHeader))
+  barrier(comm=0)
+  if (comm.rank(comm=0) == 0) {
+      write(resultHeader,file = testOut, ncolumns = length(resultHeader))
+  }
+  barrier(comm=0)
   bimPlink = data.frame(data.table:::fread(paste0(plinkFile,".bim"), header=F))
   if(sum(sapply(bimPlink[,1], is.numeric)) != nrow(bimPlink)){
     stop("ERROR: chromosome column in plink bim file is no numeric!\n")
@@ -1668,7 +1683,11 @@ scoreTest_SPAGMMAT_forVarianceRatio_binaryTrait = function(obj.glmm.null,
           print("OK")
           OUTtotal = rbind(OUTtotal, OUT)
           print("OK1")
-          write.table(OUT, testOut, quote=FALSE, row.names=FALSE, col.names=FALSE, append = TRUE)
+          barrier(comm=0)
+          if (comm.rank(comm=0) == 0) {
+              write.table(OUT, testOut, quote=FALSE, row.names=FALSE, col.names=FALSE, append = TRUE)
+          }
+          barrier(comm=0)
           OUT = NULL
         }
       }else{
@@ -1723,15 +1742,15 @@ scoreTest_SPAGMMAT_forVarianceRatio_binaryTrait = function(obj.glmm.null,
 
 } #for(k in 1:length(listOfMarkersForVarRatio)){
 
+  print(varRatioTable)
+  print(varRatioOutFile)
   barrier(comm=0)
   if (comm.rank(comm=0) == 0) {
-      print(varRatioTable)
-      print(varRatioOutFile)
       write.table(varRatioTable, varRatioOutFile, quote=F, col.names=F, row.names=F)
-      data = read.table(varRatioOutFile, header=F)
-      print(data)
   }
   barrier(comm=0)
+  data = read.table(varRatioOutFile, header=F)
+  print(data)
 }
 
 
@@ -1765,10 +1784,18 @@ scoreTest_SPAGMMAT_forVarianceRatio_quantitativeTrait = function(obj.glmm.null,
 							includeNonautoMarkersforVarRatio){	
 
 
-  if(file.exists(testOut)){file.remove(testOut)}
+  barrier(comm=0)
+  if (comm.rank(comm=0) == 0) {
+      if(file.exists(testOut)){file.remove(testOut)}
+  }
+  barrier(comm=0)
   obj.noK = obj.glmm.null$obj.noK
   resultHeader = c("markerIndex","p.value", "p.value.NA","var1","var2","Tv1","N", "AC", "AF")
-  write(resultHeader,file = testOut, ncolumns = length(resultHeader))
+  barrier(comm=0)
+  if (comm.rank(comm=0) == 0) {
+      write(resultHeader,file = testOut, ncolumns = length(resultHeader))
+  }
+  barrier(comm=0)
 
   bimPlink = data.frame(data.table:::fread(paste0(plinkFile,".bim"), header=F))
   if(sum(sapply(bimPlink[,1], is.numeric)) != nrow(bimPlink)){
@@ -2007,7 +2034,11 @@ scoreTest_SPAGMMAT_forVarianceRatio_quantitativeTrait = function(obj.glmm.null,
 	  print("OK")
           OUTtotal = rbind(OUTtotal, OUT)
 	  print("OK1")
-          write.table(OUT, testOut, quote=FALSE, row.names=FALSE, col.names=FALSE, append = TRUE)
+          barrier(comm=0)
+          if (comm.rank(comm=0) == 0) {
+              write.table(OUT, testOut, quote=FALSE, row.names=FALSE, col.names=FALSE, append = TRUE)
+          }
+          barrier(comm=0)
           OUT = NULL
         }
       }else{
@@ -2065,7 +2096,11 @@ scoreTest_SPAGMMAT_forVarianceRatio_quantitativeTrait = function(obj.glmm.null,
 
   print(varRatioTable)
   print(varRatioOutFile)
-  write.table(varRatioTable, varRatioOutFile, quote=F, col.names=F, row.names=F)
+  barrier(comm=0)
+  if (comm.rank(comm=0) == 0) {
+      write.table(varRatioTable, varRatioOutFile, quote=F, col.names=F, row.names=F)
+  }
+  barrier(comm=0)
   data = read.table(varRatioOutFile, header=F)
   print(data)
 
