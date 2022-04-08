@@ -1597,18 +1597,69 @@ arma::fvec parallelCrossProdOpenMP(int startIndex, int endIndex, arma::fcolvec &
 }
 
 #if defined(USE_GPU)
-arma::fvec gpuParallelCrossProd(arma::fcolvec &bVec) {
+arma::fvec gpuParallelCrossProd_range(int startIndex, int endIndex, arma::fcolvec &bVec) {
 	int N = geno.getNnomissing();
 	int rank;
+
+#if defined(PERF_TIMING)
+    std::chrono::steady_clock::time_point begin, end;
+#endif
 
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
 	arma::fvec crossProdVec(N, arma::fill::zeros);
 	arma::fvec local_crossProdVec(N, arma::fill::zeros);
 
+    MPI_Barrier(MPI_COMM_WORLD);
+#if defined(PERF_TIMING)
+    begin = std::chrono::steady_clock::now();
+#endif
+	geno.gpuSNPMatrix.sym_sgemv_range(rank, (size_t)startIndex, (size_t)endIndex, (size_t)bVec.n_elem, bVec.memptr(), local_crossProdVec.memptr());
+	MPI_Allreduce(local_crossProdVec.memptr(), crossProdVec.memptr(), N,
+	              MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+#if defined(PERF_TIMING)
+    end = std::chrono::steady_clock::now();
+    if (rank == 0) {
+        std::cout << "[" << rank << "] "
+                  << "sym_sgemv (secs) = "
+                  << (std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count())/1000000.0
+                  << std::endl;
+    }
+#endif
+
+	return crossProdVec;
+}
+
+
+arma::fvec gpuParallelCrossProd(arma::fcolvec &bVec) {
+	int N = geno.getNnomissing();
+	int rank;
+#if defined(PERF_TIMING)
+    std::chrono::steady_clock::time_point begin, end;
+#endif
+
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+	arma::fvec crossProdVec(N, arma::fill::zeros);
+	arma::fvec local_crossProdVec(N, arma::fill::zeros);
+
+    MPI_Barrier(MPI_COMM_WORLD);
+#if defined(PERF_TIMING)
+    begin = std::chrono::steady_clock::now();
+#endif
 	geno.gpuSNPMatrix.sym_sgemv(rank, (size_t)bVec.n_elem, bVec.memptr(), local_crossProdVec.memptr());
 	MPI_Allreduce(local_crossProdVec.memptr(), crossProdVec.memptr(), N,
 	              MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+#if defined(PERF_TIMING)
+    end = std::chrono::steady_clock::now();
+    if (rank == 0) {
+        std::cout << "[" << rank << "] "
+                  << "sym_sgemv (secs) = "
+                  << (std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count())/1000000.0
+                  << std::endl;
+    }
+#endif
+
 	return crossProdVec;
 }
 #endif
@@ -1644,28 +1695,13 @@ arma::fvec parallelCrossProd(arma::fcolvec & bVec) {
 	int Msub_mafge1perc = geno.getnumberofMarkerswithMAFge_minMAFtoConstructGRM();
 	arma::fvec bOut;
 
-    std::chrono::steady_clock::time_point begin, end;
-
 # if defined(USE_GPU)
-//    begin = std::chrono::steady_clock::now();
 	bOut = gpuParallelCrossProd(bVec);
-//    end = std::chrono::steady_clock::now();
-//	std::cout << "GPU (secs) = "
-//              <<  (std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count())/1000000.0
-//              << std::endl;
-
 	Msub_mafge1perc = geno.gpuSNPMatrix.m_global_cols;
 # else
-//    begin = std::chrono::steady_clock::now();
 	bOut = parallelCrossProdOpenMP(0, Msub_mafge1perc, bVec, ret_Msub);
-//	end = std::chrono::steady_clock::now();
-//	std::cout << "OpenMP (secs) = "
-//              <<  (std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count())/1000000.0
-//              << std::endl;
 # endif
 
-//	count++;
-//	std::cout << "### count = " << count << std::endl;
 	return bOut/Msub_mafge1perc;
 #endif
 }
@@ -1735,7 +1771,15 @@ arma::fvec parallelCrossProd_full(arma::fcolvec & bVec, int & markerNum) {
         //return CorssProd.m_bout;
 #else
 	arma::fvec bOut;
-	bOut = parallelCrossProdOpenMP(0, geno.getM(), bVec, markerNum);
+
+# if defined(USE_GPU)
+    bOut = gpuParallelCrossProd(bVec);
+    markerNum = geno.gpuSNPMatrix.m_global_cols;
+# else
+    int Msub_mafge1perc = geno.getnumberofMarkerswithMAFge_minMAFtoConstructGRM();
+	bOut = parallelCrossProdOpenMP(0, Msub_mafge1perc, bVec, markerNum);
+# endif
+
 	return bOut;
 #endif
 }
@@ -1783,12 +1827,21 @@ arma::fvec parallelCrossProd_LOCO(arma::fcolvec & bVec) {
         //return CorssProd_LOCO.m_bout/(CorssProd_LOCO.m_Msub_mafge1perc);
 	return outvec/markerNum;
 #else
-	int M = geno.getM();
-	arma::fvec outvec, bout;
-	int numberMarker_full = 0, Msub_mafge1perc;
+	int numberMarker_full = 0;
+    arma::fvec outvec, bout;
 
-	outvec = parallelCrossProdOpenMP(0, M, bVec, numberMarker_full);
-	bout =  parallelCrossProdOpenMP(geno.getStartIndex(), geno.getEndIndex()+1, bVec, Msub_mafge1perc);
+    outvec = parallelCrossProd_full(bVec, numberMarker_full);
+
+    int startIndex = geno.getStartIndex();
+    int endIndex = geno.getEndIndex();
+    int Msub_mafge1perc = 0;
+
+# if defined(USE_GPU)
+    bout = gpuParallelCrossProd_range(startIndex, endIndex+1, bVec);
+    Msub_mafge1perc = endIndex-startIndex+1;
+# else
+	bout =  parallelCrossProdOpenMP(startIndex, endIndex+1, bVec, Msub_mafge1perc);
+# endif
 	outvec = outvec - bout;
 
 	int markerNum = numberMarker_full - Msub_mafge1perc;
@@ -1836,6 +1889,64 @@ bool isUseSparseSigmaforInitTau = false;
 bool isUseSparseSigmaforModelFitting = false;
 
 
+int gpuDistributeSNPs()
+{
+    int Msub_mafge1perc = geno.getnumberofMarkerswithMAFge_minMAFtoConstructGRM();
+    int N = geno.getNnomissing();
+    int rank, size;
+    pid_t pid;
+
+#if defined(PERF_TIMING)
+    std::chrono::steady_clock::time_point begin, end;
+#endif
+
+    pid = getpid();
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    // Distribute SNPs into multiple GPUs.
+    // set_matrix() stores matrix A in its GPU memory.
+    int max_per_mpi = (Msub_mafge1perc-1)/size + 1;
+    int start_index = rank*max_per_mpi;
+    int end_index = min(Msub_mafge1perc, (rank+1)*max_per_mpi);
+    int n_cols = end_index - start_index;
+
+    arma::fmat A(N, n_cols, arma::fill::zeros);
+    arma::fvec vec;
+
+    int Aj = 0;
+    for (int i=start_index; i<end_index; i++) {
+        geno.Get_OneSNP_StdGeno(i, &vec);
+        A.col(Aj) = vec;
+        Aj++;
+    }
+    std::cout << "[" << rank << "] "
+              << "Aj = " << Aj << " n_rows = " << A.n_rows << " n_cols = " << A.n_cols << std::endl;
+    std::cout << "[" << rank << "] "
+              << "A.memptr() in gcc = " << A.memptr() << " pid = " << pid << std::endl;
+#if defined(PERF_TIMING)
+    begin = std::chrono::steady_clock::now();
+#endif
+    geno.gpuSNPMatrix.set_matrix(rank, (size_t)start_index, (size_t)A.n_rows, (size_t)A.n_cols, A.memptr());
+#if defined(PERF_TIMING)
+    end = std::chrono::steady_clock::now();
+    std::cout << "[" << rank << "] "
+              << "set_matrix (secs) = "
+              << (std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count())/1000000.0
+              << std::endl;
+#endif
+
+    int n_global_cols = 0;
+    MPI_Allreduce(&n_cols, &n_global_cols, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    geno.gpuSNPMatrix.m_global_cols = (size_t)n_global_cols;
+
+    if (n_global_cols != Msub_mafge1perc) {
+        std::cerr << "Error: size mismatch: n_global_cols(" << n_global_cols
+                  << ") != Msub_mafge1perc(" << Msub_mafge1perc << ")" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    return EXIT_SUCCESS;
+}
 
 // [[Rcpp::export]]
 arma::fvec getCrossprodMatAndKin(arma::fcolvec& bVec){
@@ -1859,45 +1970,8 @@ if(isUseSparseSigmaforInitTau | isUseSparseSigmaforModelFitting){
 
 }else{
 #if defined(USE_GPU)
-	if (!geno.gpuSNPMatrix.m_isLoaded) {
-		int Msub_mafge1perc = geno.getnumberofMarkerswithMAFge_minMAFtoConstructGRM();
-		int N = geno.getNnomissing();
-		int rank, size;
-		pid_t pid;
-
-		pid = getpid();
-		MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-		MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-		int max_per_mpi = (Msub_mafge1perc-1)/size + 1;
-		int start_index = rank*max_per_mpi;
-		int end_index = min(Msub_mafge1perc, (rank+1)*max_per_mpi);
-		int n_cols = end_index - start_index;
-
-		arma::fmat A(N, n_cols, arma::fill::zeros);
-		arma::fvec vec;
-
-		int Aj = 0;
-		for (int i=start_index; i<end_index; i++) {
-            geno.Get_OneSNP_StdGeno(i, &vec);
-            A.col(Aj) = vec;
-            Aj++;
-		}
-		std::cout << "[" << rank << "] "
-		          << "Aj = " << Aj << " n_rows = " << A.n_rows << " n_cols = " << A.n_cols << std::endl;
-		std::cout << "[" << rank << "] "
-		          << "A.memptr() in gcc = " << A.memptr() << " pid = " << pid << std::endl;
-		geno.gpuSNPMatrix.set_matrix(rank, (size_t)A.n_rows, (size_t)A.n_cols, A.memptr());
-
-		int n_global_cols = 0;
-		MPI_Allreduce(&n_cols, &n_global_cols, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-		geno.gpuSNPMatrix.m_global_cols = (size_t)n_global_cols;
-
-        if (n_global_cols != Msub_mafge1perc) {
-            std::cerr << "Error: size mismatch: n_global_cols(" << n_global_cols
-                      << ") != Msub_mafge1perc(" << Msub_mafge1perc << ")" << std::endl;
-            exit(EXIT_FAILURE);
-        }
+	if (!geno.gpuSNPMatrix.is_loaded()) {
+        gpuDistributeSNPs();
 	}
 #endif
   	crossProdVec = parallelCrossProd(bVec);
@@ -1912,7 +1986,11 @@ if(isUseSparseSigmaforInitTau | isUseSparseSigmaforModelFitting){
 
 // [[Rcpp::export]]
 arma::fvec getCrossprodMatAndKin_LOCO(arma::fcolvec& bVec){
-
+#if defined(USE_GPU)
+    if (!geno.gpuSNPMatrix.is_loaded()) {
+        gpuDistributeSNPs();
+    }
+#endif
         arma::fvec crossProdVec = parallelCrossProd_LOCO(bVec) ;
         //arma::fvec crossProdVec_2 = parallelCrossProd_LOCO_2(bVec) ;
 

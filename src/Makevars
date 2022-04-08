@@ -33,3 +33,5 @@ OBJECTS = gpuSymMatMult.o RcppExports.o SAIGE_fitGLMM_fast.o getMem.o VCF.o BGEN
 
 all: $(SHLIB)
 $(SHLIB): ${OBJECTS} Makevars
+SAIGE_fitGLMM_fast.o: gpuSymMatMult.hpp
+gpuSymMatMult.o: gpuSymMatMult.hpp
