@@ -1,15 +1,19 @@
 #!/usr/bin/env Rscript
 
 #options(stringsAsFactors=F, scipen = 999)
+mylibpath <- "/home/youngdae/git-repos/saige/lib"
 options(stringsAsFactors=F)
-library(SAIGE)
+.libPaths(c(.libPaths(), mylibpath))
+suppressMessages(library(SAIGE, lib.loc="/home/youngdae/git-repos/saige/lib"))
 #library(SAIGE, lib.loc="/humgen/atgu1/fin/wzhou/tools/SAIGE/install_v1.0.1")
-
 BLASctl_installed <- require(RhpcBLASctl)
 library(optparse)
 library(data.table)
 library(methods)
+library(pbdMPI)
 print(sessionInfo())
+
+init()
 
 option_list <- list(
   make_option("--vcfFile", type="character",default="",
@@ -237,3 +241,4 @@ if(BLASctl_installed){
   # Restore originally configured BLAS thread count
   blas_set_num_threads(original_num_threads)
 }
+finalize()
