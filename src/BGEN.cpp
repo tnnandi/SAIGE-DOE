@@ -42,11 +42,11 @@ BgenClass::BgenClass(std::string t_bgenFileName,
   setBgenObj(t_bgenFileName,
              t_bgenFileIndex,
              t_SampleInBgen);
-  
+
   setPosSampleInBgen(t_SampleInModel);
-  
+
   setIsDropMissingDosagesInBgen(t_isDropmissingdosagesInBgen);
-  
+
   setIsSparseDosageInBgen(t_isSparseDosageInBgen);
   m_AlleleOrder = t_AlleleOrder;
 }
@@ -60,18 +60,18 @@ void BgenClass::setBgenObj(const std::string t_bgenFileName,
   if(t_bgenFileIndex == ""){
     m_isQuery = false;
     std::cout << "no index file for bgen is provided" << std::endl;
-  }  
-  
+  }
+
   /****code from BOLT-LMM v2.3.4***/
-  
+
   /********** READ HEADER v1.2**********/
   //m_ibgenFile.open(m_bgenFile.c_str(), std::ios::binary);
   m_fin = fopen(t_bgenFileName.c_str(), "rb");
   //chr offset; m_ibgenFile.read(&offset, 4, 1); //cout << "offset: " << offset << endl;
   uint32_t offset; fread(&offset, 4, 1, m_fin); //cout << "offset: " << offset << endl;
   uint32_t L_H; fread(&L_H, 4, 1, m_fin); //cout << "L_H: " << L_H << endl;
-  
-  
+
+
   fread(&m_M0, 4, 1, m_fin); std::cout << "snpBlocks (Mbgen): " << m_M0 << std::endl;
   assert(m_M0 != 0);
   //unsigned int Nbgen; fread(&Nbgen, 4, 1, m_fin); std::cout << "samples (Nbgen): " << Nbgen << std::endl;
@@ -95,25 +95,25 @@ void BgenClass::setBgenObj(const std::string t_bgenFileName,
 
 void BgenClass::setPosSampleInBgen(std::vector<std::string> & t_SampleInModel)
 {
-  std::cout << "Setting position of samples in Bgen files...." << std::endl;	  
+  std::cout << "Setting position of samples in Bgen files...." << std::endl;
   m_N = t_SampleInModel.size();
-  
+
   // updated by BWJ on 03/14/2021
-  
+
   Rcpp::CharacterVector SampleInBgen(m_N0);
   for(uint32_t i = 0; i < m_N0; i++)
     SampleInBgen(i) = m_SampleInBgen.at(i);
-  
+
   Rcpp::CharacterVector SampleInModel(m_N);
   for(uint32_t i = 0; i < m_N; i++)
     SampleInModel(i) = t_SampleInModel.at(i);
-  
+
   Rcpp::IntegerVector posSampleInBgen = Rcpp::match(SampleInModel, SampleInBgen);
   for(uint32_t i = 0; i < m_N; i++){
     if(Rcpp::IntegerVector::is_na(posSampleInBgen.at(i)))
       Rcpp::stop("At least one subject requested is not in BGEN file.");
   }
-  
+
   Rcpp::IntegerVector posSampleInModel = Rcpp::match(SampleInBgen, SampleInModel);
   m_posSampleInModel.resize(m_N0);
   for(uint32_t i = 0; i < m_N0; i++){
@@ -122,28 +122,28 @@ void BgenClass::setPosSampleInBgen(std::vector<std::string> & t_SampleInModel)
     }else{
       m_posSampleInModel.at(i) = posSampleInModel.at(i) - 1;   // convert "starting from 1" to "starting from 0"
     }
-    //std::cout << "m_posSampleInModel.at(i) " << i << " " << m_posSampleInModel.at(i) << std::endl; 
+    //std::cout << "m_posSampleInModel.at(i) " << i << " " << m_posSampleInModel.at(i) << std::endl;
   }
-  
+
   // end of the update on 03/14/2021
 }
 
 
-void BgenClass::Parse2(unsigned char *buf, uint bufLen, const unsigned char *zBuf, uint zBufLen,std::string & snpName,arma::vec & dosages, double & AC, double & AF, 
-                       std::vector<uint> & indexforMissing, 
+void BgenClass::Parse2(unsigned char *buf, uint bufLen, const unsigned char *zBuf, uint zBufLen,std::string & snpName,arma::vec & dosages, double & AC, double & AF,
+                       std::vector<uint> & indexforMissing,
                        double & info, std::vector<uint> & indexNonZero, bool isImputation) {
- 
+
   //arma::vec timeoutput0 = getTime();
-       
+
   uLongf destLen = bufLen;
   if (uncompress(buf, &destLen, zBuf, zBufLen) != Z_OK || destLen != bufLen) {
     std::cerr << "ERROR: uncompress() failed" << std::endl;
     exit(1);
   }
-  
+
   unsigned char *bufAt = buf;
   uint N = bufAt[0]|(bufAt[1]<<8)|(bufAt[2]<<16)|(bufAt[3]<<24); bufAt += 4;
-  
+
   if (N != m_N0) {
     std::cerr << "ERROR: " << snpName << " has N = " << N << " (mismatch with header block)" << std::endl;
     exit(1);
@@ -163,9 +163,9 @@ void BgenClass::Parse2(unsigned char *buf, uint bufLen, const unsigned char *zBu
     std::cerr << "ERROR: " << snpName << " has maximum ploidy = " << Pmax << " (not 2)" << std::endl;
     exit(1);
   }
-  
-  //arma::vec timeoutput1 = getTime(); 
-  
+
+  //arma::vec timeoutput1 = getTime();
+
   const unsigned char *ploidyMissBytes = bufAt;
 //  std::cout << "N " << N << std::endl;
   for (uint i = 0; i < N; i++) {
@@ -210,10 +210,10 @@ void BgenClass::Parse2(unsigned char *buf, uint bufLen, const unsigned char *zBu
     dosages.set_size(m_N);
   }
   std::size_t missing_cnt = 0;
-  //AC = 0; 
+  //AC = 0;
 
   for (unsigned int i = 0; i < N; i++) {
-  
+
     if (ploidyMissBytes[i] != 130U){
       //bufAt += 2;
       p11 = lut[*bufAt]; bufAt++;
@@ -224,12 +224,12 @@ void BgenClass::Parse2(unsigned char *buf, uint bufLen, const unsigned char *zBu
       fij = 4*p11 + p10;
       sum_eij += eij;
       sum_fij_minus_eij2 += fij - eij*eij;
-    
+
      if(m_AlleleOrder == "alt-first"){
             dosage = dosage;
       }else{
             dosage = 2-dosage;
-      } 
+      }
         if(m_posSampleInModel[i] >= 0){
           if(!m_isSparseDosagesInBgen){
               dosages[m_posSampleInModel[i]] = dosage;
@@ -255,6 +255,7 @@ void BgenClass::Parse2(unsigned char *buf, uint bufLen, const unsigned char *zBu
           }
         }
      }
+<<<<<<< HEAD
   }	
 */	
     double sum_eij = 0, sum_fij_minus_eij2 = 0, sum_eij_sub = 0, sum_fij_minus_eij2_sub = 0; // for INFO
@@ -298,7 +299,7 @@ void BgenClass::Parse2(unsigned char *buf, uint bufLen, const unsigned char *zBu
           }else{
               if(dosage_new > 0){
                 dosages[i] = dosage_new;
-		ninzeroind = ninzeroind + 1;      
+		ninzeroind = ninzeroind + 1;
                 indexNonZero.push_back(m_posSampleInModel[i]);
               }
           }
@@ -314,27 +315,27 @@ void BgenClass::Parse2(unsigned char *buf, uint bufLen, const unsigned char *zBu
           }
         }
      }
-    }	  
+    }
 
    //arma::vec timeoutput3 = getTime();
    //printTime(timeoutput2, timeoutput3, "Parse2");
     //}
   //std::cout << "sum_eij_sub: " << sum_eij_sub << std::endl;
-  
+
      //if(m_AlleleOrder == "alt-first"){
      //      AC = sum_eij_sub;
      // }else{
       	   AC = 2* ((double) (m_N - missing_cnt)) - sum_eij_sub;
             //dosage = 2-dosage;
       //}
-   
+
   //AC = 2* ((double) (m_N - missing_cnt)) - sum_eij_sub;
   if(m_N == missing_cnt){
     AF = 0;
   }else{
     AF = AC/ 2/ ((double) (m_N - missing_cnt)) ;
   }
-  
+
   //std::cout << "AC: " << AC << std::endl;
   double thetaHat = sum_eij / (2* (m_N - missing_cnt));
   //std::cout << "missing_cnt " << sum_eij << std::endl;
@@ -345,13 +346,13 @@ void BgenClass::Parse2(unsigned char *buf, uint bufLen, const unsigned char *zBu
     //std::cout << "sum_fij_minus_eij2 / (2*(m_N - missing_cnt)*thetaHat*(1-thetaHat)); " << sum_fij_minus_eij2 / (2*(m_N - missing_cnt)*thetaHat*(1-thetaHat)) << std::endl;
   }else{
 	info=1.0;
-  }	  
+  }
 //arma::vec timeoutput4 = getTime();
 //}
 //printTime(timeoutput0, timeoutput1, "time 0 to 1 Parse2");
 //printTime(timeoutput1, timeoutput2, "time 1 to 2 Parse2");
 //printTime(timeoutput2, timeoutput3, "time 2 to 3 Parse2");
-//printTime(timeoutput3, timeoutput4, "time 3 to 4 Parse2"); 
+//printTime(timeoutput3, timeoutput4, "time 3 to 4 Parse2");
 //printTime(timeoutput3, timeoutput4, "time 3 to 4 Unified_getOneMarker");
 
 }
@@ -377,23 +378,25 @@ void BgenClass::getOneMarker(uint64_t & t_gIndex_prev,
 {
   uint64_t posSeek;
 
-  
+  static bool isFirst = true;
+
   if(t_gIndex > 0){
-    if(t_gIndex_prev == 0){
+    if(isFirst || t_gIndex_prev == 0){
           fseek(m_fin, t_gIndex, SEEK_SET);
+          isFirst = false;
           //m_ibedFile.seekg(posSeek, ios_base::beg);
     }else{
-	  posSeek = t_gIndex-t_gIndex_prev;
+  	  posSeek = t_gIndex-t_gIndex_prev;
           //posSeek = m_numBytesofEachMarker0 * (t_gIndex-t_gIndex_prev-1);
           if(posSeek > 0){
                 //m_ibedFile.seekg(posSeek, ios_base::cur);
-                fseek(m_fin, posSeek, SEEK_CUR);
+                fseek(m_fin, t_gIndex+posSeek, SEEK_SET);
           }
    }
   }
 
 
-  //arma::vec timeoutput1 = getTime();	
+  //arma::vec timeoutput1 = getTime();
   //if(t_gIndex > 0){
   //	  fseek(m_fin, t_gIndex, SEEK_SET);
   //}
@@ -424,20 +427,20 @@ void BgenClass::getOneMarker(uint64_t & t_gIndex_prev,
   if ( numBoolRead > 0 ) {
     // isBoolRead = true;
     t_isBoolRead = true;
-    fread(snpID, 1, LS, m_fin); snpID[LS] = '\0'; // 
+    fread(snpID, 1, LS, m_fin); snpID[LS] = '\0'; //
     ushort LR; fread(&LR, 2, 1, m_fin); // cout << "LR: " << LR << " " << std::flush;
     fread(rsID, 1, LR, m_fin); rsID[LR] = '\0'; // cout << "rsID: " << string(rsID) << " " << std::flush;
     RSID = std::string(rsID)=="." ? snpID : rsID;
     //std::string SNPID = string(snpID);
-    
+
     ushort LC; fread(&LC, 2, 1, m_fin); // cout << "LC: " << LC << " " << std::flush;
     fread(chrStr, 1, LC, m_fin); chrStr[LC] = '\0';
     chromosome  = std::string(chrStr);
-    
+
     uint physpos; fread(&physpos, 4, 1, m_fin); // cout << "physpos: " << physpos << " " << std::flush;
     position = physpos;
-    uint K; 
-    fread(&K, 2, 1, m_fin); 
+    uint K;
+    fread(&K, 2, 1, m_fin);
     //if (K != 2) {
     //  std::cerr << "ERROR: Non-bi-allelic variant found: " << K << " alleles" << std::endl;
     //  exit(1);
@@ -477,7 +480,7 @@ void BgenClass::getOneMarker(uint64_t & t_gIndex_prev,
 //printTime(timeoutput1, timeoutput2, "time 1 to 2 Unified_getOneMarker");
 //printTime(timeoutput2, timeoutput3, "time 2 to 3 Unified_getOneMarker");
 //printTime(timeoutput3a, timeoutput3, "time 3a to 3 Unified_getOneMarker");
-	
+
 
     // output
     // t_alt = first_allele;       // ALT allele (usually minor allele)
@@ -492,7 +495,7 @@ void BgenClass::getOneMarker(uint64_t & t_gIndex_prev,
     t_imputeInfo = info;     // imputation information score, i.e., R2 (all 1 for PLINK)
     t_missingRate = (double) t_indexForMissing.size() / (double) m_N;    // missing rate
     //t_indexForNonZero = indexNonZero;
-   
+
     //std::cout << "indexNonZero.size() " << indexNonZero.size() << std::endl;
     //std::cout << "t_indexForNonZero.size() " << t_indexForNonZero.size() << std::endl;
 
@@ -505,7 +508,7 @@ void BgenClass::getOneMarker(uint64_t & t_gIndex_prev,
       for(unsigned int i = 0; i < dosages.size(); i++)
         dosages.at(i) = 2 - dosages.at(i);
     }
-    
+
   }else{
     // isBoolRead = false;
     t_isBoolRead = false;
@@ -539,4 +542,4 @@ void BgenClass::closegenofile(){
 	fclose(m_fin);
 }
 
-}  
+}
