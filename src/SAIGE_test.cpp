@@ -9,8 +9,9 @@
 
 #include "SAIGE_test.hpp"
 #include "SPA.hpp"
-
+#include "ER_binary_func.hpp"
 #include "UTIL.hpp"
+#include "getMem.hpp"
 #include "getMem.hpp"
 #include <thread>         // std::this_thread::sleep_for
 #include <chrono>         // std::chrono::seconds
@@ -26,12 +27,14 @@ SAIGEClass::SAIGEClass(
 	arma::mat  t_XXVX_inv,
 	arma::mat & t_XV,
 	arma::mat & t_XVX_inv_XV,
+	arma::mat & t_Sigma_iXXSigma_iX,
 	arma::mat & t_X,
 	arma::vec &  t_S_a,
 	arma::vec & t_res,
 	arma::vec & t_mu2,
 	arma::vec & t_mu,
-	arma::vec & t_varRatio,
+	arma::vec & t_varRatio_sparse,
+	arma::vec & t_varRatio_null,
 	arma::vec & t_cateVarRatioMinMACVecExclude,
         arma::vec & t_cateVarRatioMaxMACVecInclude,
 	double t_SPA_Cutoff,
@@ -40,6 +43,8 @@ SAIGEClass::SAIGEClass(
 	arma::vec & t_y,
 	std::string t_impute_method,
 	bool t_flagSparseGRM,
+	bool t_isFastTest,
+	double t_pval_cutoff_for_fastTest,
 	arma::umat & t_locationMat,
 	arma::vec & t_valueVec,
         int t_dimNum,
@@ -47,18 +52,29 @@ SAIGEClass::SAIGEClass(
         std::vector<uint32_t> & t_condition_genoIndex,
 	bool t_is_Firth_beta,
         double t_pCutoffforFirth,
-        arma::vec & t_offset){
+        arma::vec & t_offset,
+	arma::vec & t_resout){
+
 
     m_XVX = t_XVX;
     m_XV = t_XV;
     m_XXVX_inv = t_XXVX_inv;
     m_XVX_inv_XV = t_XVX_inv_XV;
+    m_Sigma_iXXSigma_iX = t_Sigma_iXXSigma_iX;
+    m_isVarPsadj = false;
+    if(m_Sigma_iXXSigma_iX.n_cols == 1 && m_Sigma_iXXSigma_iX.n_rows == 1){
+	m_isVarPsadj = false;
+    }else{
+	m_isVarPsadj = true;
+    }
     m_X = t_X;
     m_S_a = t_S_a;
     m_res = t_res;
+    m_resout = t_resout;
     m_mu2 = t_mu2;
     m_mu = t_mu;
-    m_varRatio = t_varRatio;
+    m_varRatio_sparse = t_varRatio_sparse;
+    m_varRatio_null = t_varRatio_null;
     m_cateVarRatioMinMACVecExclude = t_cateVarRatioMinMACVecExclude;
     m_cateVarRatioMaxMACVecInclude = t_cateVarRatioMaxMACVecInclude;
     m_tauvec = t_tauvec;
@@ -94,11 +110,12 @@ SAIGEClass::SAIGEClass(
     }
     m_dimNum = t_dimNum;
     m_flagSparseGRM = t_flagSparseGRM;
+    m_isFastTest = t_isFastTest;
+    m_pval_cutoff_for_fastTest = t_pval_cutoff_for_fastTest;
     if(m_dimNum != 0){
 	m_locationMat = t_locationMat;
     	m_valueVec = t_valueVec;
     }
-
 }    
 
 
@@ -113,12 +130,13 @@ void SAIGEClass::scoreTest(arma::vec & t_GVec,
                      double& t_Beta,
                      double& t_seBeta,
                      std::string& t_pval_str,
+		     double& t_pval,
+		     bool& t_islogp,
                      double t_altFreq,
                      double &t_Tstat,
                      double &t_var1,
                      double &t_var2,
                      arma::vec & t_gtilde,
-		     bool m_flagSparseGRM,
 		     arma::vec & t_P2Vec,
 		     double& t_gy, 
 		     bool t_is_region,
@@ -136,43 +154,53 @@ void SAIGEClass::scoreTest(arma::vec & t_GVec,
     S = S/m_tauvec[0];
 
 
-    if(!m_flagSparseGRM){
-      t_P2Vec = t_gtilde % m_mu2 *m_tauvec[0];
+    if(!m_flagSparseGRM_cur){
+      t_P2Vec = t_gtilde % m_mu2 *m_tauvec[0];  
+      var2m = dot(t_P2Vec , t_gtilde);
     }else{
       arma::sp_mat m_SigmaMat_sp = gen_sp_SigmaMat();
       t_P2Vec = arma::spsolve(m_SigmaMat_sp, t_gtilde);
+      var2m = dot(t_P2Vec , t_gtilde);
+      if(m_isVarPsadj){
+	var2m = var2m - t_gtilde.t() * m_Sigma_iXXSigma_iX * m_X.t() * t_P2Vec;	
+      }
     }	      
-    var2m = dot(t_P2Vec , t_gtilde);
     var2 = var2m(0,0);
     double var1 = var2 * m_varRatioVal;
+
     double stat = S*S/var1;
-    double t_pval;
-    
-
-    //if (var1 <= std::pow(std::numeric_limits<double>::min(), 2)){
     if (var1 <= std::numeric_limits<double>::min()){
-        t_pval = 1;
+          t_pval = 1;
     }else{
-        boost::math::chi_squared chisq_dist(1);
-        t_pval = boost::math::cdf(complement(chisq_dist, stat));
+      if(!std::isnan(stat) && std::isfinite(stat)){
+          boost::math::chi_squared chisq_dist(1);
+          t_pval = boost::math::cdf(complement(chisq_dist, stat));
+      }else{
+          t_pval = 1;
+	  stat = 0.0;
+      }	      
     }
-
     char pValueBuf[100];
-    if (t_pval != 0)
+ 
+  //if(!std::isnan(stat)){
+    if (t_pval != 0){
         sprintf(pValueBuf, "%.6E", t_pval);
-    else {
-        double log10p = log10(2.0) - M_LOG10E*stat/2 - 0.5*log10(stat*2*M_PI);
+	t_islogp = false;
+    }else{	    
+        double logp = R::pchisq(stat,1,false,true);
+        double log10p = logp/(log(10));
         int exponent = floor(log10p);
         double fraction = pow(10.0, log10p - exponent);
         if (fraction >= 9.95) {
           fraction = 1;
            exponent++;
-         }
+        }
         sprintf(pValueBuf, "%.1fE%d", fraction, exponent);
+	t_pval = logp;
+	t_islogp = true;
     }
     std::string buffAsStdStr = pValueBuf;
     t_pval_str = buffAsStdStr;
-
     t_Beta = S/var1;
     t_seBeta = fabs(t_Beta) / sqrt(fabs(stat));
     t_Tstat = S;
@@ -186,6 +214,8 @@ void SAIGEClass::scoreTestFast(arma::vec & t_GVec,
                      double& t_Beta,
                      double& t_seBeta,
                      std::string& t_pval_str,
+		     double& t_pval,
+                     bool& t_islogp,
                      double t_altFreq,
                      double &t_Tstat,
                      double &t_var1,
@@ -222,24 +252,26 @@ void SAIGEClass::scoreTestFast(arma::vec & t_GVec,
     S = S1 + S2;
     S = S/m_tauvec[0];
 
-
     double stat = S*S/var1;
-    double t_pval;
-
-    //if (var1 <= std::pow(std::numeric_limits<double>::min(), 2)){
     if (var1 <= std::numeric_limits<double>::min()){
-        t_pval = 1;
-    } else{
-      boost::math::chi_squared chisq_dist(1);
-      t_pval = boost::math::cdf(complement(chisq_dist, stat));
-    }
-    
+          t_pval = 1;
+    }else{
+      if(!std::isnan(stat) && std::isfinite(stat)){	    
+          boost::math::chi_squared chisq_dist(1);
+          t_pval = boost::math::cdf(complement(chisq_dist, stat));
 
+      }else{
+          t_pval = 1;
+	  stat = 0.0;
+      }
+    }
     char pValueBuf[100];
-    if (t_pval != 0)
+    if (t_pval != 0){
         sprintf(pValueBuf, "%.6E", t_pval);
-    else {
-        double log10p = log10(2.0) - M_LOG10E*stat/2 - 0.5*log10(stat*2*M_PI);
+	t_islogp = false;
+    }else {
+	double logp = R::pchisq(stat,1,false,true);
+        double log10p = logp/(log(10));
         int exponent = floor(log10p);
         double fraction = pow(10.0, log10p - exponent);
         if (fraction >= 9.95) {
@@ -247,15 +279,16 @@ void SAIGEClass::scoreTestFast(arma::vec & t_GVec,
            exponent++;
          }
         sprintf(pValueBuf, "%.1fE%d", fraction, exponent);
+	t_pval = logp;
+	t_islogp = true;
     }
     std::string buffAsStdStr = pValueBuf;
     t_pval_str = buffAsStdStr;
     t_Beta = S/var1;
-    t_seBeta = fabs(t_Beta) / sqrt(fabs(stat));
+    t_seBeta = fabs(t_Beta) / sqrt(fabs(stat));	
     t_Tstat = S;
     t_var1 = var1;
     t_var2 = var2;
-
 }
 
 
@@ -313,9 +346,9 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
 			       arma::uvec & iIndex,
 			       arma::uvec & iIndexComVec,
                                double& t_Beta, 
-                               double& t_seBeta, 
-                               double& t_pval,
-			       double& t_pval_noSPA, 
+                               double& t_seBeta,
+			       std::string& t_pval,
+			       std::string& t_pval_noSPA,	
                                double t_altFreq,
                                double& t_Tstat,
 			       double& t_gy,
@@ -328,14 +361,18 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
 			       bool t_isCondition,
 			       double& t_Beta_c,
                            	double& t_seBeta_c,
-                           	double& t_pval_c,
-                          	double& t_pval_noSPA_c,
+			       std::string& t_pval_c,
+                               std::string& t_pval_noSPA_c,	
                            	double& t_Tstat_c,
                            	double& t_varT_c,
 			   	arma::rowvec & t_G1tilde_P_G2tilde, 
 				bool & t_isFirth,
-				bool & t_isFirthConverge)
+				bool & t_isFirthConverge, 
+				bool t_isER) 
 {
+
+
+
   t_isFirth = false;
   //arma::vec adjGVec = getadjGFast(t_GVec);
   std::string t_pval_str;
@@ -343,43 +380,31 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
   //iIndex = arma::find(t_GVec != 0);
   //arma::vec t_gtilde;
   bool isScoreFast = true;
-
-
-  //if((t_altFreq >= 0.3 && t_altFreq <= 0.7) || m_flagSparseGRM || is_region){
-  if(m_flagSparseGRM || is_region){
+  if(m_flagSparseGRM_cur){
     isScoreFast = false;
   }
 
+ 
+  double pval_noadj, pval, t_qval_Firth; //can be log or not raw
+  bool ispvallog;
+
   //for test
- //arma::vec timeoutput3 = getTime();
+  //arma::vec timeoutput3 = getTime();
   if(!isScoreFast){
 	//std::cout << "scoreTest " << std::endl;  
   	is_gtilde = true;
-  	scoreTest(t_GVec, t_Beta, t_seBeta, t_pval_str, t_altFreq, t_Tstat, t_var1, t_var2, t_gtilde, m_flagSparseGRM, t_P2Vec, t_gy, is_region, iIndex);
+  	scoreTest(t_GVec, t_Beta, t_seBeta, t_pval_noSPA, pval_noadj, ispvallog, t_altFreq, t_Tstat, t_var1, t_var2, t_gtilde, t_P2Vec, t_gy, is_region, iIndex);
   }else{
   	is_gtilde = false;
 	//std::cout << "scoreTestFast "  << std::endl;  
-	//arma::uvec iIndexVec = arma::find(t_GVec > 0);
-        scoreTestFast(t_GVec, iIndex, t_Beta, t_seBeta, t_pval_str, t_altFreq, t_Tstat, t_var1, t_var2);
+        scoreTestFast(t_GVec, iIndex, t_Beta, t_seBeta, t_pval_noSPA, pval_noadj, ispvallog, t_altFreq, t_Tstat, t_var1, t_var2);
   }
+
 
   double StdStat = std::abs(t_Tstat) / sqrt(t_var1);
+
   t_isSPAConverge = false;
-
-  double pval_noadj;
-  try {
-        pval_noadj = std::stod(t_pval_str);
-  } catch (const std::invalid_argument&) {
-        pval_noadj = 0;
-        std::cerr << "Argument is invalid\n";
-        //throw;
-  } catch (const std::out_of_range&) {
-        std::cerr << "Argument is out of range for a double\n";
-        //throw;
-        pval_noadj = 0;
-  }
-
-
+  
  //arma::vec timeoutput3_a = getTime();
   double q, qinv, m1, NAmu, NAsigma, tol1, p_iIndexComVecSize;
 
@@ -393,18 +418,22 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
   arma::vec gNA(iIndexComVecSize, arma::fill::none);
   arma::vec muNB(iIndexSize, arma::fill::none);
   arma::vec muNA(iIndexComVecSize, arma::fill::none);
-/*
-    std::cout << "iIndexComVecSize " << iIndexComVecSize << std::endl;
-    std::cout << "iIndexSize " << iIndexSize << std::endl;
-    std::cout << "gNA.n_elem 1 " << gNA.n_elem << std::endl;
-        std::cout << "gNB.n_elem 1 " << gNB.n_elem << std::endl;
-        std::cout << "muNA.n_elem 1 " << muNA.n_elem << std::endl;
-        std::cout << "muNB.n_elem 1 " << muNB.n_elem << std::endl;
-*/
 
 
   double gmuNB;
-  if(StdStat > m_SPA_Cutoff && m_traitType != "quantitative"){
+
+  
+if((StdStat > m_SPA_Cutoff || std::isnan(StdStat)) && m_traitType != "quantitative" && t_isER){
+	t_isER = true;
+}else{	
+	t_isER = false;
+}
+
+
+if(!t_isER){
+
+
+  if(!std::isnan(StdStat) && (StdStat > m_SPA_Cutoff) && m_traitType != "quantitative"){
 
        if(!is_gtilde){
           t_gtilde.resize(m_n);
@@ -482,57 +511,125 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
            		NAsigma = t_var2 - arma::sum(muNB % arma::pow(gNB,2));
 		}
         }
-    	bool logp=false;
+    	//bool logp=false;
 	double tol0 = std::numeric_limits<double>::epsilon();
 	tol1 = std::pow(tol0, 0.25);
 	if(p_iIndexComVecSize >= 0.5){
 		//std::cout << "SPA_fast" << std::endl;
-        	SPA_fast(m_mu, t_gtilde, q, qinv, pval_noadj, false, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol1, m_traitType, t_SPApval, t_isSPAConverge);
+        	SPA_fast(m_mu, t_gtilde, q, qinv, pval_noadj, ispvallog, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol1, m_traitType, t_SPApval, t_isSPAConverge);
 	}else{
 		//std::cout << "SPA" << std::endl;
-		SPA(m_mu, t_gtilde, q, qinv, pval_noadj, tol1, logp, m_traitType, t_SPApval, t_isSPAConverge);	
+		SPA(m_mu, t_gtilde, q, qinv, pval_noadj, tol1, ispvallog, m_traitType, t_SPApval, t_isSPAConverge);	
 	}
 
 
-    	boost::math::normal ns;
-	t_pval = t_SPApval;
-    	double t_qval;
+    boost::math::normal ns;
+    double t_qval;
+
+    if(t_isSPAConverge){
         try {
-           t_qval = boost::math::quantile(ns, t_pval/2);
-           t_qval = fabs(t_qval);
-           t_seBeta = fabs(t_Beta)/t_qval;
+          t_qval = R::qnorm(t_SPApval, 0, 1, false, ispvallog);		
+          t_qval = fabs(t_qval);
+          t_seBeta = fabs(t_Beta)/t_qval;
         }catch (const std::overflow_error&) {
           t_qval = std::numeric_limits<double>::infinity();
-          t_seBeta = 0;
-        } 
+	  t_isSPAConverge = false;
+        }
+    }
+
+
+    if(!ispvallog && t_SPApval == 0){
+          t_isSPAConverge = false;
+    }
+
+
   }
-   t_pval_noSPA = pval_noadj; 
+   //t_pval_noSPA = pval_noadj; 
+   char pValueBuf_SPA[100];
    if(m_traitType!="quantitative"){
         if(t_isSPAConverge){
-                t_pval = t_SPApval;
+		if(!ispvallog){
+		  sprintf(pValueBuf_SPA, "%.6E", t_SPApval);
+		}else{
+        	  double t_SPApval_log10 = t_SPApval/(log(10));
+        	  int exponent = floor(t_SPApval_log10);
+        	  double fraction = pow(10.0, t_SPApval_log10 - exponent);
+        	  if (fraction >= 9.95) {
+          	    fraction = 1;
+           	    exponent++;
+         	  }
+        	  sprintf(pValueBuf_SPA, "%.1fE%d", fraction, exponent);
+		}
+		std::string buffAsStdStr_SPA = pValueBuf_SPA;
+	        t_pval = buffAsStdStr_SPA;
+		pval = t_SPApval;	
         }else{
-                t_pval = pval_noadj;
+                t_pval = t_pval_noSPA;
+		pval = pval_noadj;
+		//pval_log10 = pval_noadj_log10;
         }
+
+	if(!ispvallog){
+		if(m_is_Firth_beta && pval <= m_pCutoffforFirth){
+			t_isFirth = true;
+			t_qval_Firth = R::qnorm(pval, 0, 1, false, false);
+		}
+
+	}else{
+		if(m_is_Firth_beta && pval <= std::log(m_pCutoffforFirth)){
+			t_isFirth = true;
+			t_qval_Firth = R::qnorm(pval, 0, 1, false, true);
+		}
+	}
+
+
    }else{
         t_pval = t_pval_noSPA;
+	pval = pval_noadj;
+	//pval_log10 = pval_noadj_log10;
    }
 
-   if(m_traitType!="quantitative" & m_is_Firth_beta & t_pval <= m_pCutoffforFirth){
-	t_isFirth = true;
+}else{ //if(!t_isER){
 
+    arma::mat Z_er(t_GVec.n_elem, 1);
+    Z_er.col(0) = t_GVec;
+    arma::vec res_er = m_res;
+    arma::vec pi1_er = m_mu;
+    arma::vec resout_er = m_resout;
+    double pval_ER =  SKATExactBin_Work(Z_er, res_er, pi1_er, m_n_case, iIndex, iIndexComVec, resout_er, 2e+6, 1e+4, 1e-6, 1);
+    char pValueBuf_ER[100];
+    sprintf(pValueBuf_ER, "%.6E", pval_ER);
+    std::string buffAsStdStr_ER = pValueBuf_ER;
+    t_pval = pValueBuf_ER;
+    pval = pval_ER;
+    boost::math::normal ns;
+    double t_qval_ER;
+    try{
+      t_qval_ER = boost::math::quantile(ns, pval_ER/2);
+      t_qval_ER = fabs(t_qval_ER);
+      t_seBeta = fabs(t_Beta)/t_qval_ER;
+    }catch (const std::overflow_error&) {
+      t_qval_ER = std::numeric_limits<double>::infinity();
+      t_seBeta = 0;
+    }
+
+    if(m_is_Firth_beta & pval <= m_pCutoffforFirth){
+	t_isFirth = true;
+	t_qval_Firth = t_qval_ER;
+    }	    
+}
+
+   if(t_isFirth){
 	if(!is_gtilde){
                 getadjGFast(t_GVec, t_gtilde, iIndex);
                 is_gtilde = true;
         }
 	arma::mat x(t_GVec.n_elem, 2, arma::fill::ones);	
 	x.col(1) = t_gtilde;
-	//x.col(1) = t_GVec;
 	arma::vec init(2, arma::fill::zeros);
-	//std::cout << "t_Beta " << t_Beta << std::endl;
-	//std::cout << "t_seBeta " << t_seBeta << std::endl;
-	fast_logistf_fit_simple(x, m_y, m_offset, true, init, 50, 15, 15, 1e-5, 1e-5, 1e-5, t_Beta ,t_seBeta, t_isFirthConverge);	
-	//std::cout << "t_Beta after " << t_Beta << std::endl;
-	//std::cout << "t_seBeta after " << t_seBeta << std::endl;
+	fast_logistf_fit_simple(x, m_y, m_offset, true, init, 50, 15, 15, 1e-5, 1e-5, 1e-5, t_Beta ,t_seBeta, t_isFirthConverge);
+	//back calculates se based on beta from firth adjustion and the p-value that accounts for case-control imbalance
+	t_seBeta = fabs(t_Beta)/fabs(t_qval_Firth);
    }
    
  //arma::vec timeoutput4 = getTime();
@@ -558,59 +655,51 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
 
     double stat_c = S_c*S_c/t_varT_c;
 
+    double pval_noSPA_c;
 
-     //if (t_varT_c <= std::pow(std::numeric_limits<double>::min(), 2)){
      if (t_varT_c <= std::numeric_limits<double>::min()){
-        t_pval_noSPA_c = 1;
+        pval_noSPA_c = 1;
 	stat_c = 0;
      }else{
+       if(!std::isnan(stat_c) && std::isfinite(stat_c)){	     
         boost::math::chi_squared chisq_dist(1);
-        t_pval_noSPA_c = boost::math::cdf(complement(chisq_dist, stat_c));
+        pval_noSPA_c = boost::math::cdf(complement(chisq_dist, stat_c));
+       }else{
+        pval_noSPA_c = 1;
+	stat_c = 0;
+       }	       
      }
 
     char pValueBuf_c[100];
-    if (t_pval_noSPA_c != 0)
-        sprintf(pValueBuf_c, "%.6E", t_pval_noSPA_c);
-    else {
-        double log10p_c = log10(2.0) - M_LOG10E*stat_c/2 - 0.5*log10(stat_c*2*M_PI);
-        int exponent_c = floor(log10p_c);
+
+    if (pval_noSPA_c != 0){
+        sprintf(pValueBuf_c, "%.6E", pval_noSPA_c);
+        ispvallog = false;
+    }else {
+	double logp_c = R::pchisq(stat_c,1,false,true);	
+	double log10p_c = logp_c/(log(10));
+	int exponent_c = floor(log10p_c);
         double fraction_c = pow(10.0, log10p_c - exponent_c);
         if (fraction_c >= 9.95) {
           fraction_c = 1;
            exponent_c++;
          }
         sprintf(pValueBuf_c, "%.1fE%d", fraction_c, exponent_c);
+	ispvallog = true;
+	pval_noSPA_c = logp_c;
     }
     std::string buffAsStdStr_c = pValueBuf_c;
-    std::string& t_pval_noSPA_str_c = buffAsStdStr_c;
-
+    t_pval_noSPA_c = buffAsStdStr_c;
     t_Beta_c = S_c/t_varT_c;
     t_seBeta_c = fabs(t_Beta_c) / sqrt(stat_c);
     t_Tstat_c = S_c;
-/*
-*/
-
-  double pval_noSPA_c;  
-  try {
-        pval_noSPA_c = std::stod(t_pval_noSPA_str_c);
-  } catch (const std::invalid_argument&) {
-        pval_noSPA_c = 0;
-        std::cerr << "Argument is invalid\n";
-        //throw;
-  } catch (const std::out_of_range&) {
-        std::cerr << "Argument is out of range for a double\n";
-        //throw;
-        pval_noSPA_c = 0;
-  }
-  t_pval_noSPA_c = pval_noSPA_c; 
 
 
+    bool t_isSPAConverge_c;
     if(m_traitType != "quantitative" && stat_c > std::pow(m_SPA_Cutoff,2)){
-	bool t_isSPAConverge_c;
 	double q_c, qinv_c, pval_noadj_c, SPApval_c;    
 	if(m_traitType == "binary"){
                 q_c = t_Tstat_c/sqrt(t_varT_c/t_var2) + m1;
-
                 if((q_c-m1) > 0){
                         qinv_c = -1 * std::abs(q_c-m1) + m1;
                 }else if ((q_c-m1) == 0){
@@ -623,41 +712,100 @@ void SAIGEClass::getMarkerPval(arma::vec & t_GVec,
                 qinv = -q_c;
         }
 
-        bool logp=false;
 
         if(p_iIndexComVecSize >= 0.5){
 		//std::cout << "SPA_fast " << std::endl;
-                SPA_fast(m_mu, t_gtilde, q_c, qinv_c, pval_noadj_c, false, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol1, m_traitType, SPApval_c, t_isSPAConverge_c);
+                SPA_fast(m_mu, t_gtilde, q_c, qinv_c, pval_noSPA_c, ispvallog, gNA, gNB, muNA, muNB, NAmu, NAsigma, tol1, m_traitType, SPApval_c, t_isSPAConverge_c);
         }else{
 		//std::cout << "SPA " << std::endl;
-                SPA(m_mu, t_gtilde, q_c, qinv_c, pval_noadj_c, tol1, logp, m_traitType, SPApval_c, t_isSPAConverge_c);
+                SPA(m_mu, t_gtilde, q_c, qinv_c, pval_noSPA_c, tol1, ispvallog, m_traitType, SPApval_c, t_isSPAConverge_c);
         }
 
+	
         boost::math::normal ns;
-        t_pval_c = SPApval_c;
+        //double pval_SPA = t_SPApval;
         double t_qval_c;
+     if(t_isSPAConverge_c){	
         try {
-           t_qval_c = boost::math::quantile(ns, t_pval_c/2);
+          if(!ispvallog){
+           t_qval_c = boost::math::quantile(ns, SPApval_c/2);
+          }else{
+	   t_qval_c = R::qnorm(SPApval_c, 0, 1, false, true);
+          }
            t_qval_c = fabs(t_qval_c);
            t_seBeta_c = fabs(t_Beta_c)/t_qval_c;
         }catch (const std::overflow_error&) {
           t_qval_c = std::numeric_limits<double>::infinity();
-          t_seBeta_c = 0;
+          //t_seBeta_c = 0;
+	  t_isSPAConverge_c = false;
         }
+      }
+
+	if(!ispvallog && SPApval_c == 0){
+		t_isSPAConverge_c = false;	
+	}
+
+
+      char pValueBuf_SPA_c[100];
+        if(t_isSPAConverge_c){
+                if(!ispvallog){
+                  sprintf(pValueBuf_SPA_c, "%.6E", SPApval_c/2);
+                }else{
+                  double SPApval_c_log10 = SPApval_c/(log(10));
+                  int exponent = floor(SPApval_c_log10);
+                  double fraction = pow(10.0, SPApval_c_log10 - exponent);
+                  if (fraction >= 9.95) {
+                    fraction = 1;
+                    exponent++;
+                  }
+                  sprintf(pValueBuf_SPA_c, "%.1fE%d", fraction, exponent);
+                }
+                std::string buffAsStdStr_SPA_c = pValueBuf_SPA_c;
+                t_pval_c = buffAsStdStr_SPA_c;
+        }else{
+                t_pval_c = t_pval_noSPA_c;
+        }
+
     }else{
+	t_isSPAConverge_c = false;    
     	t_pval_c = t_pval_noSPA_c;	    
     }	    
-   }
+ }
+
 
     gNA.clear();
     gNB.clear();
     muNA.clear();
     gNB.clear();
+
+
+
+    if(is_region && !is_gtilde){
+	getadjGFast(t_GVec, t_gtilde, iIndex);
+	is_gtilde = true; 
+    }
+
+    if(is_region && isScoreFast){
+
+      t_gy = dot(t_gtilde, m_y);
+      if(!m_flagSparseGRM_cur){
+        t_P2Vec = t_gtilde % m_mu2 *m_tauvec[0];
+      }else{
+        arma::sp_mat m_SigmaMat_sp = gen_sp_SigmaMat();
+        t_P2Vec = arma::spsolve(m_SigmaMat_sp, t_gtilde);
+      }
+    }
 }
 
 
-bool SAIGEClass::assignVarianceRatio(double MAC){
+bool SAIGEClass::assignVarianceRatio(double MAC, bool issparseforVR){
     bool hasVarRatio = false;
+    arma::vec m_varRatio;
+    if(issparseforVR){
+	m_varRatio = m_varRatio_sparse;
+    }else{
+	m_varRatio = m_varRatio_null;
+    }
     for(unsigned int i = 0; i < m_cateVarRatioMaxMACVecInclude.n_elem; i++)
     {
         if(MAC <= m_cateVarRatioMaxMACVecInclude(i) && MAC > m_cateVarRatioMinMACVecExclude(i)){    	    
@@ -684,8 +832,14 @@ bool SAIGEClass::assignVarianceRatio(double MAC){
     return(hasVarRatio);    
 }
 
-void SAIGEClass::assignSingleVarianceRatio(){ 
-	m_varRatioVal = m_varRatio(0);
+void SAIGEClass::assignSingleVarianceRatio(bool issparseforVR){ 
+    arma::vec m_varRatio;
+    if(issparseforVR){
+        m_varRatio = m_varRatio_sparse;
+    }else{
+        m_varRatio = m_varRatio_null;
+    }	
+    m_varRatioVal = m_varRatio(0);
 }
 
 
@@ -703,7 +857,7 @@ void SAIGEClass::assignConditionFactors(
       arma::vec & t_MAF_cond,
       double t_qsum_cond,
       arma::vec & t_gsum_cond,
-      arma::vec & t_p_cond
+      std::vector<std::string> & t_p_cond
       ){
 	m_P2Mat_cond = t_P2Mat_cond;
 	m_VarInvMat_cond = t_VarInvMat_cond;
@@ -724,7 +878,7 @@ void SAIGEClass::assignConditionFactors_scalefactor(
 	arma::mat weightMat_G2_G2 = m_G2_Weight_cond * m_G2_Weight_cond.t(); 
 	arma::mat VarMat_cond_scaled = scalefactor_G2_cond_Mat * m_VarMat_cond * scalefactor_G2_cond_Mat;
 	arma::mat VarMat_cond_scaled_weighted = VarMat_cond_scaled % weightMat_G2_G2;
-	m_VarInvMat_cond_scaled_weighted = VarMat_cond_scaled_weighted.i();
+	m_VarInvMat_cond_scaled_weighted = arma::pinv(VarMat_cond_scaled_weighted);
 	//m_VarInvMat_cond_region_binary = (1/scalefactor_G2_cond_Mat) * m_VarInvMat_cond	* (1/scalefactor_G2_cond_Mat);
 	
 }
@@ -833,12 +987,8 @@ void SAIGEClass::fast_logistf_fit_simple(arma::mat & x,
         //return beta;
 }
 
-
-
-
-
-
-
-
+void SAIGEClass::set_flagSparseGRM_cur(bool t_flagSparseGRM_cur){
+	m_flagSparseGRM_cur = t_flagSparseGRM_cur;
+}
 
 }

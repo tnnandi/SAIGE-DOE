@@ -12,6 +12,7 @@
 #include <ctime>// include this header for calculating execution time 
 #include <cassert>
 #include <boost/date_time.hpp> // for gettimeofday and timeval
+#include "getMem.hpp"
 using namespace Rcpp;
 using namespace std;
 using namespace RcppParallel;
@@ -43,12 +44,16 @@ public:
 	float g_maxMACVarRatio;
 	bool isVarRatio = false;
 	int numberofMarkers_varRatio = 0;
+	int numberofMarkers_varRatio_common = 0;
+	arma::ivec g_randMarkerIndforVR;
 	std::vector<float>      invstdvVec0_forVarRatio;
         arma::fvec      invstdvVec_forVarRatio;
 	 std::vector<float>      alleleFreqVec0_forVarRatio;
         arma::fvec      alleleFreqVec_forVarRatio;
 	std::vector<int>      MACVec0_forVarRatio;
+	std::vector<int>      markerIndexVec0_forVarRatio;
 	arma::ivec MACVec_forVarRatio;
+	arma::ivec markerIndexVec_forVarRatio;
 
 
 	//vector<unsigned char> genoVec; 	 
@@ -103,6 +108,8 @@ public:
         
         arma::ivec startIndexVec;
         arma::ivec endIndexVec;
+        arma::ivec startIndexVec_forvr;
+        arma::ivec endIndexVec_forvr;
 
 
         int Msub_MAFge_minMAFtoConstructGRM;
@@ -453,22 +460,69 @@ public:
 
 	     altFreq = alleleCount/float(Nnomissing * 2);
 
-	      unsigned char geno2;
-	      passQC = false;
+	     unsigned char geno2;
+	     passQC = false;
 	     passVarRatio = false;
 	     float maf = std::min(altFreq, 1-altFreq);
 	     mac = std::min(alleleCount, int(Nnomissing) * 2 - alleleCount);
 
+
 		if(maf >= minMAFtoConstructGRM && missingRate <= maxMissingRate){
 			passQC = true;
 		}
-		
 		if(isVarRatio){
-			if(mac >= g_minMACVarRatio && mac <= g_maxMACVarRatio){
+			if(g_maxMACVarRatio != -1){ //if estimating categorical variance ratios
+			   if(mac >= g_minMACVarRatio && mac < g_maxMACVarRatio){
 				passVarRatio = true;
 				genoVecofPointers_forVarRatio[SNPIdx_vr] = new vector<unsigned char>;
 				genoVecofPointers_forVarRatio[SNPIdx_vr]->reserve(numMarkersofEachArray*ceil(float(Nnomissing)/4));
+			   }else if(mac >= g_maxMACVarRatio){
+				   //randomly select 200 markers for estimating the variance ratio for the last MAC category	
+				   //if(numberofMarkers_varRatio_common < 200){
+				   	//if(static_cast<int>(SNPIdx) == 123){
+					//	std::cout << "123" << std::endl;
+					//	bool isIng_randMarkerIndforVR = arma::any(g_randMarkerIndforVR == static_cast<int>(SNPIdx));
+					//	std::cout << "isIng_randMarkerIndforVR " << isIng_randMarkerIndforVR << std::endl;
+					//}
+				   	passVarRatio = arma::any(g_randMarkerIndforVR == static_cast<int>(SNPIdx));
+					if(passVarRatio){
+						//std::cout << "SNPIdx " << SNPIdx << std::endl;
+						genoVecofPointers_forVarRatio[SNPIdx_vr] = new vector<unsigned char>;
+						genoVecofPointers_forVarRatio[SNPIdx_vr]->reserve(numMarkersofEachArray*ceil(float(Nnomissing)/4));
+				  		numberofMarkers_varRatio_common = numberofMarkers_varRatio_common + 1;
+						//passVarRatio = false;
+					}
+				  //} 
+			//	passVarRatio = true;	
 			}
+			}else{
+				if(mac >= g_minMACVarRatio){
+                                   //randomly select 200 markers for estimating the variance ratio for the last MAC category
+                                   //if(numberofMarkers_varRatio_common < 200){
+                                        //if(static_cast<int>(SNPIdx) == 123){
+                                        //      std::cout << "123" << std::endl;
+                                        //      bool isIng_randMarkerIndforVR = arma::any(g_randMarkerIndforVR == static_cast<int>(SNPIdx));
+                                        //      std::cout << "isIng_randMarkerIndforVR " << isIng_randMarkerIndforVR << std::endl;
+                                        //}
+                                        passVarRatio = arma::any(g_randMarkerIndforVR == static_cast<int>(SNPIdx));
+                                        if(passVarRatio){
+                                                //std::cout << "SNPIdx " << SNPIdx << std::endl;
+                                                genoVecofPointers_forVarRatio[SNPIdx_vr] = new vector<unsigned char>;
+                                                genoVecofPointers_forVarRatio[SNPIdx_vr]->reserve(numMarkersofEachArray*ceil(float(Nnomissing)/4));
+                                                numberofMarkers_varRatio_common = numberofMarkers_varRatio_common + 1;
+                                                //passVarRatio = false;
+                                        }
+                                  //}
+                        //      passVarRatio = true;
+                        }	
+			
+
+			}
+			//avoid the overlap between markers for GRM and markers for variance ratio estimation	   
+			if(passVarRatio){
+				passQC = false;
+			}
+		      //}
 		}
 
 		if(passQC | passVarRatio){
@@ -487,12 +541,12 @@ public:
                                         setGenotype(&geno2, u, HOM_REF);
                               }
 			      if(u == 3 || indx == (Nnomissing-1)){
-				       if(passQC){
-                                        	genoVecofPointers[SNPIdx_new/numMarkersofEachArray]->push_back(geno2); //avoid large continuous memory usage
-				       }
 				       if(passVarRatio){
 						genoVecofPointers_forVarRatio[SNPIdx_vr/numMarkersofEachArray]->push_back(geno2); //avoid large continuous memory usage
 					}
+				        if(passQC){
+						genoVecofPointers[SNPIdx_new/numMarkersofEachArray]->push_back(geno2);
+					}	
                                         geno2 = 0;
                               }
 			}
@@ -659,7 +713,7 @@ public:
   	//This function is used instead of using a constructor because using constructor can not take
   	//genofile as an argument from runModel.R 
         //genofile is the predix for plink bim, bed, fam, files   
-  	void setGenoObj(std::string genofile, std::vector<int> & subSampleInGeno, std::vector<bool> & indicatorGenoSamplesWithPheno, float memoryChunk, bool  isDiagofKinSetAsOne){
+  	void setGenoObj(std::string bedfile, std::string bimfile, std::string famfile, std::vector<int> & subSampleInGeno, std::vector<bool> & indicatorGenoSamplesWithPheno, float memoryChunk, bool  isDiagofKinSetAsOne){
 		//cout << "OK1\n";
 		setKinDiagtoOne = isDiagofKinSetAsOne;   
 		ptrsubSampleInGeno = subSampleInGeno;
@@ -674,9 +728,9 @@ public:
    		M=0;
   		N=0;
    	
-		std::string bedfile = genofile+".bed";
-		std::string bimfile = genofile+".bim"; 
-		std::string famfile = genofile+".fam"; 
+		//std::string bedfile = genofile+".bed";
+		//std::string bimfile = genofile+".bim"; 
+		//std::string famfile = genofile+".fam"; 
 		std::string junk;
 		//cout << "OK2\n";
 		//count the number of individuals
@@ -784,6 +838,14 @@ public:
 		}*/
 
 		cout << "setgeno mark1" << endl;
+		arma::ivec g_randMarkerIndforVR_temp;
+		//randomly select common markers for variance ratio
+		if(isVarRatio){
+			 g_randMarkerIndforVR_temp = arma::randi(1000, arma::distr_param(0,M-1));
+			 g_randMarkerIndforVR = arma::unique(g_randMarkerIndforVR_temp);
+			 //arma::ivec g_randMarkerIndforVR_sort = arma::sort(g_randMarkerIndforVR);
+			 //g_randMarkerIndforVR_sort.print("g_randMarkerIndforVR_sort");
+		}
 		//alleleFreqVec.zeros(M);
 		//invstdvVec.zeros(M);
 		//MACVec.zeros(M);
@@ -856,6 +918,7 @@ public:
 					invstdvVec0_forVarRatio.push_back(invStd);
 					alleleFreqVec0_forVarRatio.push_back(freq);
 					MACVec0_forVarRatio.push_back(mac);
+					markerIndexVec0_forVarRatio.push_back(i);
 					SNPIdx_vr = SNPIdx_vr + 1;
 					numberofMarkers_varRatio = numberofMarkers_varRatio + 1;
 				}
@@ -867,10 +930,11 @@ public:
     		}//end for(int i = 0; i < M; i++){
 
 		if( minMAFtoConstructGRM > 0 | maxMissingRate < 1){
-			cout << numberofMarkerswithMAFge_minMAFtoConstructGRM << " markers with MAF >= " << minMAFtoConstructGRM << " and missing rate <= " << maxMissingRate << " are used for GRM." << endl;
-		}else{
-			cout << M << " markers with MAF >= " << minMAFtoConstructGRM << " are used for GRM." << endl;
+			cout << numberofMarkerswithMAFge_minMAFtoConstructGRM << " markers with MAF >= " << minMAFtoConstructGRM << " and missing rate <= " << maxMissingRate  << endl;
 		}
+		//else{
+		//	cout << M << " markers with MAF >= " << minMAFtoConstructGRM << endl;
+		//}
 
 		
 		int numofGenoArray_old = numofGenoArray;
@@ -911,19 +975,20 @@ public:
 			MACVec[i] = MACVec0.at(i);
 
 		}
-                //numMarkersofEachArray = floor((memoryChunk*pow (10.0, 9.0))/(ceil(float(Nnomissing)/4)));
-		
 	if(isVarRatio){
 		invstdvVec_forVarRatio.clear();
                 invstdvVec_forVarRatio.set_size(numberofMarkers_varRatio);
 		alleleFreqVec_forVarRatio.clear();
                 alleleFreqVec_forVarRatio.set_size(numberofMarkers_varRatio);
 		MACVec_forVarRatio.clear();
-		MACVec_forVarRatio.set_size(numberofMarkers_varRatio);	
+		MACVec_forVarRatio.set_size(numberofMarkers_varRatio);
+	        markerIndexVec_forVarRatio.clear();
+	        markerIndexVec_forVarRatio.set_size(numberofMarkers_varRatio);	
 		for(int i = 0; i < numberofMarkers_varRatio; i++){
 			invstdvVec_forVarRatio[i] = invstdvVec0_forVarRatio.at(i);
 			alleleFreqVec_forVarRatio[i] =alleleFreqVec0_forVarRatio.at(i);
 			MACVec_forVarRatio[i] = MACVec0_forVarRatio.at(i);
+			markerIndexVec_forVarRatio[i] = markerIndexVec0_forVarRatio.at(i);
 		}
 	}
 
@@ -1142,6 +1207,11 @@ arma::ivec getMACVec(){
 arma::ivec getMACVec_forVarRatio(){
         return(geno.MACVec_forVarRatio);
 }
+
+// [[Rcpp::export]] 
+arma::ivec getIndexVec_forVarRatio(){
+	return(geno.markerIndexVec_forVarRatio);
+}	
 
 // [[Rcpp::export]]
 bool getIsVarRatioGeno(){
@@ -1908,10 +1978,10 @@ void  parallelsumTwoVec(arma::fvec &x) {
 
 
 // [[Rcpp::export]]
-void setgeno(std::string genofile, std::vector<int> & subSampleInGeno, std::vector<bool> & indicatorGenoSamplesWithPheno, float memoryChunk, bool isDiagofKinSetAsOne)
+void setgeno(std::string bedfile, std::string bimfile, std::string famfile, std::vector<int> & subSampleInGeno, std::vector<bool> & indicatorGenoSamplesWithPheno, float memoryChunk, bool isDiagofKinSetAsOne)
 {
 	int start_s=clock();
-        geno.setGenoObj(genofile, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne);
+        geno.setGenoObj(bedfile, bimfile, famfile, subSampleInGeno, indicatorGenoSamplesWithPheno, memoryChunk, isDiagofKinSetAsOne);
 	//geno.printAlleleFreqVec();
 	//geno.printGenoVec();
 	int stop_s=clock();
@@ -2729,6 +2799,13 @@ void setStartEndIndexVec( arma::ivec & startIndex_vec,  arma::ivec & endIndex_ve
   //geno.Msub = geno.M - (endIndex - startIndex + 1);
 }
 
+// // [[Rcpp::export]]
+//void setStartEndIndexVec_forvr( arma::ivec & startIndex_vec,  arma::ivec & endIndex_vec){
+//  geno.startIndexVec_forvr = startIndex_vec;
+//  geno.endIndexVec_forvr = endIndex_vec;
+  //geno.Msub = geno.M - (endIndex - startIndex + 1);
+//}
+
 
 
 //This function calculates the coefficients of variation for mean of a vector
@@ -2935,7 +3012,11 @@ Rcpp::List fitglmmaiRPCG(arma::fvec& Yvec, arma::fmat& Xmat, arma::fvec &wVec,  
 arma::fvec& Sigma_iY, arma::fmat & Sigma_iX, arma::fmat & cov,
 int nrun, int maxiterPCG, float tolPCG, float tol, float traceCVcutoff){
 
+	//double mem1,mem2;
+        //process_mem_usage(mem1, mem2);
+
   	Rcpp::List re = getAIScore(Yvec, Xmat,wVec,  tauVec, Sigma_iY, Sigma_iX, cov, nrun, maxiterPCG, tolPCG, traceCVcutoff);
+        //process_mem_usage(mem1, mem2);
   	float YPAPY = re["YPAPY"];
   	float Trace = re["Trace"];
   	float score1 = YPAPY - Trace;
@@ -2958,12 +3039,13 @@ int nrun, int maxiterPCG, float tolPCG, float tol, float traceCVcutoff){
 
   	}
 
-  //cout << "DEBUG4" << endl;
   	for(int i=0; i<tauVec.n_elem; ++i) {
     		if (tauVec(i) < tol){
       			tauVec(i) = 0;
     		}
   	}
+        //process_mem_usage(mem1, mem2);
+   	//std::cout << "VM 3: " << mem1 << "; RSS 3: " << mem2<< std::endl;
   	return List::create(Named("tau") = tauVec);
 }
 
@@ -4533,8 +4615,8 @@ void setminMAC_VarianceRatio(float t_minMACVarRatio, float t_maxMACVarRatio, boo
 	geno.g_minMACVarRatio = t_minMACVarRatio;
 	geno.g_maxMACVarRatio = t_maxMACVarRatio;
 	geno.isVarRatio = t_isVarianceRatioinGeno;
-	//std::cout << "geno.g_minMACVarRatio " << geno.g_minMACVarRatio << std::endl;
-	//std::cout << "geno.g_maxMACVarRatio " << geno.g_maxMACVarRatio << std::endl;	
+	std::cout << "geno.g_minMACVarRatio " << geno.g_minMACVarRatio << std::endl;
+	std::cout << "geno.g_maxMACVarRatio " << geno.g_maxMACVarRatio << std::endl;	
 }
 
 // // [[Rcpp::export]] 

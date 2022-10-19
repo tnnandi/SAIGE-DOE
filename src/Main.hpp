@@ -64,8 +64,8 @@ void Unified_getMarkerPval(
                            arma::uvec & t_indexForZero_vec,
                            double& t_Beta,
                            double& t_seBeta,
-                           double& t_pval,
-                           double& t_pval_noSPA,
+                           std::string& t_pval,
+                           std::string& t_pval_noSPA,
                            double& t_Tstat,
 			   double& t_gy,
                            double& t_varT,
@@ -78,13 +78,14 @@ void Unified_getMarkerPval(
 			   bool t_isCondition, 
 			   double& t_Beta_c,
                            double& t_seBeta_c,
-                           double& t_pval_c,
-                           double& t_pval_noSPA_c,
+                           std::string& t_pval_c,
+                           std::string& t_pval_noSPA_c,
                            double& t_Tstat_c,
                            double& t_varT_c,
 			   arma::rowvec & t_G1tilde_P_G2tilde_Vec,
 			    bool & t_isFirth,
-			   bool & t_isFirthConverge);
+			   bool & t_isFirthConverge,
+			   bool t_isER);
 
 
 Rcpp::List mainRegionInCPP(
@@ -105,7 +106,9 @@ Rcpp::List mainRegionInCPP(
 			   bool t_isSingleinGroupTest,
 			   bool t_isOutputMarkerList,
 			   std::vector<std::string> & annoStringVec,
-                           std::string regionName);
+                           std::string regionName,
+			   bool t_isFastTest,
+			   bool t_isMoreOutput);
 
 
 
@@ -139,7 +142,8 @@ void setSAIGEobjInCPP(arma::mat & t_XVX,
         arma::vec & t_res,
         arma::vec & t_mu2,
         arma::vec & t_mu,
-        arma::vec & t_varRatio,
+        arma::vec & t_varRatio_sparse,
+        arma::vec & t_varRatio_null,
         arma::vec & t_cateVarRatioMinMACVecExclude,
         arma::vec & t_cateVarRatioMaxMACVecInclude,
         double t_SPA_Cutoff,
@@ -148,6 +152,8 @@ void setSAIGEobjInCPP(arma::mat & t_XVX,
         arma::vec & t_y,
         std::string t_impute_method,
         bool t_flagSparseGRM,
+	bool t_isFastTest,
+	double t_pval_cutoff_for_fastTest,
         arma::umat & t_locationMat,
         arma::vec & t_valueVec,
         int t_dimNum,
@@ -194,7 +200,7 @@ void closeGenoFile(std::string & t_genoType);
 bool openOutfile(std::string t_traitType, bool isappend);
 
 
-bool openOutfile_singleinGroup(std::string t_traitType, bool t_isImputation, bool isappend);
+bool openOutfile_singleinGroup(std::string t_traitType, bool t_isImputation, bool isappend, bool t_isMoreOutput);
 
 bool openOutfile_single(std::string t_traitType, bool t_isImputation, bool isappend, bool t_isMoreOutput);
 
@@ -218,15 +224,15 @@ void writeOutfile_single(bool t_isMoreOutput,
                         std::vector<double> & seBetaVec,
                         std::vector<double> & TstatVec,
                         std::vector<double> & varTVec,
-                        std::vector<double> & pvalVec,
-                        std::vector<double> & pvalNAVec,
+                        std::vector<std::string> & pvalVec,
+                        std::vector<std::string> & pvalNAVec,
                         std::vector<bool>  & isSPAConvergeVec,
                         std::vector<double> & Beta_cVec,
                         std::vector<double> & seBeta_cVec,
                         std::vector<double> & Tstat_cVec,
                         std::vector<double> & varT_cVec,
-                        std::vector<double> & pval_cVec,
-                        std::vector<double> & pvalNA_cVec,
+                        std::vector<std::string> & pval_cVec,
+                        std::vector<std::string> & pvalNA_cVec,
                         std::vector<double> & AF_caseVec,
                         std::vector<double> & AF_ctrlVec,
                         std::vector<uint32_t> & N_caseVec,
@@ -236,5 +242,121 @@ void writeOutfile_single(bool t_isMoreOutput,
                         std::vector<double>  & N_case_hetVec,
                         std::vector<double>  & N_ctrl_homVec,
                         std::vector<uint32_t> & N_Vec);
+
+
+
+
+int writeOutfile_singleinGroup(bool t_isMoreOutput,
+      bool t_isImputation,
+                        bool t_isCondition,
+                        bool t_isFirth,
+                         int mFirth,
+                         int mFirthConverge,
+                        std::string t_traitType,
+                        std::vector<std::string> & chrVec,
+                        std::vector<std::string> & posVec,
+                        std::vector<std::string> & markerVec,
+                        std::vector<std::string> & refVec,
+                        std::vector<std::string> & altVec,
+                        std::vector<double> & altCountsVec,
+                        std::vector<double> & altFreqVec,
+                        std::vector<double> & imputationInfoVec,
+                        std::vector<double> & missingRateVec,
+                        std::vector<double> & BetaVec,
+                        std::vector<double> & seBetaVec,
+                        std::vector<double> & TstatVec,
+                        std::vector<double> & varTVec,
+                        std::vector<std::string> & pvalVec,
+                        std::vector<std::string> & pvalNAVec,
+                        std::vector<bool>  & isSPAConvergeVec,
+                        std::vector<double> & Beta_cVec,
+                        std::vector<double> & seBeta_cVec,
+                        std::vector<double> & Tstat_cVec,
+                        std::vector<double> & varT_cVec,
+                        std::vector<std::string> & pval_cVec,
+                        std::vector<std::string> & pvalNA_cVec,
+                        std::vector<double> & AF_caseVec,
+                        std::vector<double> & AF_ctrlVec,
+                        std::vector<uint32_t> & N_caseVec,
+                        std::vector<uint32_t> & N_ctrlVec,
+                        std::vector<double>  & N_case_homVec,
+                        std::vector<double>  & N_ctrl_hetVec,
+                        std::vector<double>  & N_case_hetVec,
+                        std::vector<double>  & N_ctrl_homVec,
+                        std::vector<uint32_t> & N_Vec);
+
+
+void set_flagSparseGRM_cur_SAIGE(bool t_flagSparseGRM_cur);
+
+void set_flagSparseGRM_cur_SAIGE_org();
+
+
+void writeOutfile_BURDEN(std::string regionName,
+                        std::vector<std::string>  & BURDEN_AnnoName_Vec,
+                        std::vector<std::string> & BURDEN_maxMAFName_Vec,
+                        std::vector<std::string> & BURDEN_pval_Vec,
+                        std::vector<double> & BURDEN_Beta_Vec,
+                        std::vector<double> & BURDEN_seBeta_Vec,
+                        std::vector<std::string> & BURDEN_pval_cVec,
+                        std::vector<double> & BURDEN_Beta_cVec,
+                        std::vector<double> & BURDEN_seBeta_cVec,
+                        arma::vec & MAC_GroupVec,
+                        arma::vec & MACCase_GroupVec,
+                        arma::vec & MACControl_GroupVec,
+                        arma::vec & NumRare_GroupVec,
+                        arma::vec & NumUltraRare_GroupVec,
+                        double cctpval,
+                        double cctpval_cond,
+                        unsigned int q_anno,
+                        unsigned int q_maf,
+                        bool isCondition,
+                        std::string t_traitType);
+
+void copy_singleInGroup();
+
+void set_varianceRatio(double MAC, bool isSingleVarianceRatio);
+
+int writeOutfile_singleInGroup(bool t_isMoreOutput,
+                        bool t_isImputation,
+                        bool t_isCondition,
+                        bool t_isFirth,
+                         int mFirth,
+                         int mFirthConverge,
+                        std::string t_traitType,
+                        std::vector<std::string> & chrVec,
+                        std::vector<std::string> & posVec,
+                        std::vector<std::string> & markerVec,
+                        std::vector<std::string> & refVec,
+                        std::vector<std::string> & altVec,
+                        std::vector<double> & altCountsVec,
+                        std::vector<double> & altFreqVec,
+                        std::vector<double> & imputationInfoVec,
+                        std::vector<double> & missingRateVec,
+                        std::vector<double> & BetaVec,
+                        std::vector<double> & seBetaVec,
+                        std::vector<double> & TstatVec,
+                        std::vector<double> & varTVec,
+                        std::vector<std::string> & pvalVec,
+                        std::vector<std::string> & pvalNAVec,
+                        std::vector<bool>  & isSPAConvergeVec,
+                        std::vector<double> & Beta_cVec,
+                        std::vector<double> & seBeta_cVec,
+                        std::vector<double> & Tstat_cVec,
+                        std::vector<double> & varT_cVec,
+                        std::vector<std::string> & pval_cVec,
+                        std::vector<std::string> & pvalNA_cVec,
+                        std::vector<double> & AF_caseVec,
+                        std::vector<double> & AF_ctrlVec,
+                        std::vector<uint32_t> & N_caseVec,
+                        std::vector<uint32_t> & N_ctrlVec,
+                        std::vector<double>  & N_case_homVec,
+                        std::vector<double>  & N_ctrl_hetVec,
+                        std::vector<double>  & N_case_hetVec,
+                        std::vector<double>  & N_ctrl_homVec,
+                        std::vector<uint32_t> & N_Vec,
+                        std::ofstream & t_OutFile_singleInGroup);
+
+uint32_t Unified_getSampleSizeinGeno(std::string & t_genoType);
+uint32_t Unified_getSampleSizeinAnalysis(std::string & t_genoType);
 
 #endif

@@ -48,7 +48,8 @@ dosage_zerod_cutoff,
 dosage_zerod_MAC_cutoff,
 markers_per_chunk, 
 groups_per_chunk,
-minGroupMAC_in_BurdenTest){
+minGroupMAC_in_BurdenTest,
+max_MAC_use_ER){
 
 	checkArgNumeric(start, deparse(substitute(start)), 1, 250000000)
         checkArgNumeric(end, deparse(substitute(end)), 1, 250000000)
@@ -62,6 +63,7 @@ minGroupMAC_in_BurdenTest){
         cat("Any dosages <= ", dosage_zerod_cutoff, " for genetic variants with MAC <= ", dosage_zerod_MAC_cutoff, " are set to be 0 in group tests\n")
 	checkArgNumeric(markers_per_chunk, deparse(substitute(markers_per_chunk)), minVal=1000)
 	checkArgNumeric(groups_per_chunk, deparse(substitute(groups_per_chunk)), minVal=1)
+	checkArgNumeric(max_MAC_use_ER, deparse(substitute(max_MAC_use_ER)), minVal=0)
 	#cat("min_MAC ", min_MAC, "\n")
 	#if(length(which(minGroupMAC_in_BurdenTest > 0)) > 0){
 	#	cat("minGroupMAC_in_BurdenTest need to be >= min_MAC\n")

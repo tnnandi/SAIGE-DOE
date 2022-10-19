@@ -12,7 +12,7 @@ ReadGroupFile<-function(groupFile){
     if (length(marker_group_line) == 0) {
       break
     }
-    marker_group_line_list = strsplit(marker_group_line, split=c(" +", "\t"))[[1]]
+    marker_group_line_list = strsplit(marker_group_line, split="[\ \t]+")[[1]]
     if (length(marker_group_line_list) < 3) {
       stop("Error, group file line:",line ,"Each line should have geneID GroupName  \n")
     }
@@ -85,7 +85,7 @@ checkGroupFile<-function(groupFile){
       line = line - 1
       stop("Error, group file has emply lines\n")
     }
-    marker_group_line_list = strsplit(marker_group_line, split=c(" +", "\t"))[[1]]
+    marker_group_line_list = strsplit(marker_group_line, split="[\ \t]+")[[1]]
     if (length(marker_group_line_list) < 3) {
       check_close(gf)
       stop("Error, group file line:",line ,"Each line should have a region name and a catergory (var, anno or weight) \n")
@@ -113,7 +113,7 @@ checkGroupFile<-function(groupFile){
     	break
     }else{
 	if(length(marker_group_line) < a){
-		marker_group_line_list = strsplit(marker_group_line[1], split=c(" +", "\t"))[[1]]	
+		marker_group_line_list = strsplit(marker_group_line[1], split="[\ \t]+")[[1]]	
 		if (length(marker_group_line_list) < 3) {
       			stop("Error, group file line:",line-2 ," is incomplete.\n")
     		}
@@ -123,7 +123,7 @@ checkGroupFile<-function(groupFile){
     }	    
 
 
-    marker_group_line_list = strsplit(marker_group_line[1], split=c(" +", "\t"))[[1]]
+    marker_group_line_list = strsplit(marker_group_line[1], split="[\ \t]+")[[1]]
     line = line + 1
     if (length(marker_group_line_list) < 3) {
       	stop("Error, group file line:",line ," is incomplete.\n")
@@ -137,7 +137,7 @@ checkGroupFile<-function(groupFile){
     geneID0 = geneID
     numMarkers = length(marker_group_line_list) - 2	
 
-    marker_group_line_list = strsplit(marker_group_line[2], split=c(" +", "\t"))[[1]]
+    marker_group_line_list = strsplit(marker_group_line[2], split="[\ \t]+")[[1]]
     line = line + 1
    if (length(marker_group_line_list) < 3) {
         stop("Error, group file line:",line ," is incomplete.\n")
@@ -158,7 +158,7 @@ checkGroupFile<-function(groupFile){
 
     if(is_weight_included){
 
-   	marker_group_line_list = strsplit(marker_group_line[3], split=c(" +", "\t"))[[1]]
+   	marker_group_line_list = strsplit(marker_group_line[3], split="[\ \t]+")[[1]]
         line = line + 1
 	if (length(marker_group_line_list) < 3) {
         	stop("Error, group file line:",line ," is incomplete.\n")
@@ -200,17 +200,17 @@ SPA_ER_kernel_related_Phiadj_fast_new<-function(p.new, Score, Phi, p.value_burde
 	
 
 	idx_0<-which(VarS_org >0)
-        idx_p0<-which(p.new >0)
-        idx_p1<-which(p.new <0)
-
-
+        #idx_p0<-which(p.new >0)
+        idx_p0<-which(!is.na(p.new))
+        #idx_p1<-which(p.new <0)
 	#if(length(idx_0) > 0){
  	#	zscore.all_1[idx_0]= qnorm(p.new[idx_0]/2, mean = 0, sd =sqrt(VarS_org[idx_0]),lower.tail = FALSE, log.p = FALSE)*sign(Score)
         #}
 	VarS = zscore.all_0^2/500
 
 	if(length(idx_p0) > 0){
-                VarS[idx_p0]= zscore.all_0[idx_p0]^2/qchisq(p.new[idx_p0], 1, ncp = 0, lower.tail = FALSE, log.p = FALSE)
+                #VarS[idx_p0]= zscore.all_0[idx_p0]^2/qchisq(p.new[idx_p0], 1, ncp = 0, lower.tail = FALSE, log.p = FALSE)
+                VarS[idx_p0]= zscore.all_0[idx_p0]^2/qchisq(p.new[idx_p0], df = 1, ncp = 0, lower.tail = FALSE, log.p = TRUE)
         }
 	vars_inf=which(VarS==Inf)
 	if(regionTestType != "BURDEN"){
@@ -247,7 +247,8 @@ SPA_ER_kernel_related_Phiadj_fast_new<-function(p.new, Score, Phi, p.value_burde
 	}
         	VarQ = sum(G2_adj_n)
         	Q_b=sum(zscore.all_1)^2
-        	VarQ_2=Q_b/qchisq(p.value_burden, df=1, ncp = 0, lower.tail = FALSE, log.p = FALSE)
+
+        	VarQ_2=Q_b/qchisq(p.value_burden, df=1, ncp = 0, lower.tail = FALSE, log.p = TRUE)
         	if (VarQ_2== 0) {
                 	r=1
         	}else{
@@ -273,7 +274,7 @@ SPA_ER_kernel_related_Phiadj_fast_new<-function(p.new, Score, Phi, p.value_burde
 
 
 get_newPhi_scaleFactor = function(q.sum, mu.a, g.sum, p.new, Score, Phi, regionTestType){
-	p.value_burden<-SPAtest:::Saddle_Prob(q.sum , mu=mu.a, g=g.sum, Cutoff=2,alpha=2.5*10^-6)$p.value
+	p.value_burden<-SPAtest:::Saddle_Prob(q.sum, mu=mu.a, g=g.sum, Cutoff=2,alpha=2.5*10^-6, log.p =TRUE)$p.value
         re_phi= SPA_ER_kernel_related_Phiadj_fast_new(p.new, Score, Phi, p.value_burden, regionTestType)
 	return(re_phi)
 }
