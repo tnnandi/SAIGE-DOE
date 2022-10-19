@@ -8,7 +8,6 @@ options(stringsAsFactors=F)
 #library(SAIGE, lib.loc="/net/hunt/zhowei/project/imbalancedCaseCtrlMixedModel/Rpackage_SPAGMMAT/installSAIGEFolder/0.44.6.3_onlyRunSingleJobsinSetBased")
 .libPaths(c(.libPaths(), "/gpfs/alpine/proj-shared/med112/youngdae/SAIGE-DOE/extdata/R_lib"))
 library(SAIGE)
-#library(SAIGE, lib.loc="/humgen/atgu1/fin/wzhou/tools/SAIGE/install_SAIGE_0.99.4")
 require(optparse) #install.packages("optparse")
 require(pbdMPI)
 
@@ -18,6 +17,12 @@ print(sessionInfo())
 option_list <- list(
   make_option("--plinkFile", type="character",default="",
     help="Path to plink file for creating the genetic relationship matrix (GRM). minMAFforGRM can be used to specify the minimum MAF and maxMissingRate can be used to specify the maximum missing rates  of markers in the plink file to be used for constructing GRM. Genetic markers are also randomly selected from the plink file to estimate the variance ratios"),
+  make_option("--bedFile", type="character",default="",
+    help="Path to bed file. If plinkFile is specified, 'plinkFile'.bed will be used"),
+  make_option("--bimFile", type="character",default="",
+    help="Path to bim file. If plinkFile is specified, 'plinkFile'.bim will be used"),
+  make_option("--famFile", type="character",default="",
+    help="Path to fam file. If plinkFile is specified, 'plinkFile'.fam will be used"),
   make_option("--phenoFile", type="character", default="",
     help="Required. Path to the phenotype file. The file can be either tab or space delimited. The phenotype file has a header and contains at least two columns. One column is for phentoype and the other column is for sample IDs. Additional columns can be included in the phenotype file for covariates in the null model. Please specify the names of the covariates using the argument covarColList and specify categorical covariates using the argument qCovarColList. All categorical covariates must also be included in covarColList."),
   make_option("--phenoCol", type="character", default="",
@@ -55,8 +60,12 @@ option_list <- list(
    help="Optional. Initial values for tau. [default=0,0]"),
   make_option("--LOCO", type="logical", default=TRUE,
     help="Whether to apply the leave-one-chromosome-out (LOCO) approach when fitting the null model using the full GRM [default=TRUE]."),
+  make_option("--isLowMemLOCO", type="logical", default=FALSE,
+    help="Whehter to output the model file by chromosome when LOCO=TRUE. If TRUE, the memory usage in Step 1 and Step 2 will be lower [default=FALSE]"),
   make_option("--traceCVcutoff", type="numeric", default=0.0025,
     help="Optional. Threshold for coefficient of variation (CV) for the trace estimator. Number of runs for trace estimation will be increased until the CV is below the threshold [default=0.0025]."),
+  make_option("--nrun", type="numeric", default=30,
+    help="Number of rums in trace estimation. [default=30]"),	       
   make_option("--ratioCVcutoff", type="numeric", default=0.001,
     help="Optional. Threshold for coefficient of variation (CV) for estimating the variance ratio. The number of randomly selected markers will be increased until the CV is below the threshold [default=0.001]"),
   make_option("--outputPrefix", type="character", default="~/",
@@ -139,9 +148,12 @@ cateVarRatioMaxMACVecInclude <- convertoNumeric(x=strsplit(opt$cateVarRatioMaxMA
 
 #set seed
 set.seed(1)
-
+if(packageVersion("SAIGE")<"1.1.3"){
 
 fitNULLGLMM(plinkFile=opt$plinkFile,
+	    bedFile=opt$bedFile,
+	    bimFile=opt$bimFile,
+	    famFile=opt$famFile,
 	    useSparseGRMtoFitNULL=opt$useSparseGRMtoFitNULL, 
             sparseGRMFile=opt$sparseGRMFile,
             sparseGRMSampleIDFile=opt$sparseGRMSampleIDFile,
@@ -168,6 +180,7 @@ fitNULLGLMM(plinkFile=opt$plinkFile,
             tauInit = tauInit,
             LOCO = opt$LOCO,
             traceCVcutoff = opt$traceCVcutoff,
+	    nrun = opt$nrun,
             ratioCVcutoff = opt$ratioCVcutoff,
 	    outputPrefix_varRatio = opt$outputPrefix_varRatio,
 	    IsOverwriteVarianceRatioFile = opt$IsOverwriteVarianceRatioFile,
@@ -187,4 +200,58 @@ fitNULLGLMM(plinkFile=opt$plinkFile,
 	    MaleCode=opt$MaleCode,
 	    MaleOnly=opt$MaleOnly,
 	    SampleIDIncludeFile=opt$SampleIDIncludeFile
-	)	
+	)
+}else{
+fitNULLGLMM(plinkFile=opt$plinkFile,
+	    bedFile=opt$bedFile,
+	    bimFile=opt$bimFile,
+	    famFile=opt$famFile,
+	    useSparseGRMtoFitNULL=opt$useSparseGRMtoFitNULL, 
+            sparseGRMFile=opt$sparseGRMFile,
+            sparseGRMSampleIDFile=opt$sparseGRMSampleIDFile,
+            phenoFile = opt$phenoFile,
+            phenoCol = opt$phenoCol,
+            sampleIDColinphenoFile = opt$sampleIDColinphenoFile,
+            traitType = opt$traitType,
+            outputPrefix = opt$outputPrefix,
+	    isCovariateOffset=opt$isCovariateOffset,
+            nThreads = opt$nThreads,
+	    useSparseGRMforVarRatio = opt$useSparseGRMforVarRatio,
+            invNormalize = opt$invNormalize,
+            covarColList = covars,
+            qCovarCol = qcovars,
+	    tol=opt$tol,
+	    maxiter=opt$maxiter,
+            tolPCG=opt$tolPCG,
+            maxiterPCG=opt$maxiterPCG,
+            SPAcutoff = opt$SPAcutoff,
+            numMarkersForVarRatio = opt$numRandomMarkerforVarianceRatio,
+            skipModelFitting = opt$skipModelFitting,
+	    skipVarianceRatioEstimation = opt$skipVarianceRatioEstimation,
+            memoryChunk = opt$memoryChunk,
+            tauInit = tauInit,
+            LOCO = opt$LOCO,
+	    isLowMemLOCO = opt$isLowMemLOCO,
+            traceCVcutoff = opt$traceCVcutoff,
+	    nrun = opt$nrun,
+            ratioCVcutoff = opt$ratioCVcutoff,
+	    outputPrefix_varRatio = opt$outputPrefix_varRatio,
+	    IsOverwriteVarianceRatioFile = opt$IsOverwriteVarianceRatioFile,
+            relatednessCutoff = opt$relatednessCutoff,
+            isCateVarianceRatio = opt$isCateVarianceRatio,
+            cateVarRatioMinMACVecExclude = cateVarRatioMinMACVecExclude,
+            cateVarRatioMaxMACVecInclude = cateVarRatioMaxMACVecInclude,
+            isCovariateTransform = opt$isCovariateTransform,
+            isDiagofKinSetAsOne = opt$isDiagofKinSetAsOne,
+	    minMAFforGRM = opt$minMAFforGRM,
+	    maxMissingRateforGRM = opt$maxMissingRateforGRM,
+	    minCovariateCount=opt$minCovariateCount,
+	    includeNonautoMarkersforVarRatio=opt$includeNonautoMarkersforVarRatio,
+	    sexCol=opt$sexCol,
+    	    FemaleCode=opt$FemaleCode,
+	    FemaleOnly=opt$FemaleOnly,
+	    MaleCode=opt$MaleCode,
+	    MaleOnly=opt$MaleOnly,
+	    SampleIDIncludeFile=opt$SampleIDIncludeFile
+	)
+}	

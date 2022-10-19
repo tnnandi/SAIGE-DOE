@@ -43,7 +43,7 @@
 #' @param weights.beta vector of numeric with two elements. parameters for the beta distribution to weight genetic markers in gene-based tests. By default, "c(1,25)".
 #' @param r.corr numeric. bewteen 0 and 1. parameters for gene-based tests. If r.corr = 1, only Burden tests will be performed. If r.corr = 0, SKAT-O tests will be performed and results for Burden tests and SKAT tests will be output too.  By default, 0. 
 #' @param markers_per_chunk_in_groupTest numeric. Number of markers in each chunk when calculating the variance covariance matrix in the set/group-based tests. By default, 100.
-#' @param condition character. For conditional analysis. Variant ids are in the format chr:pos_ref/alt and seperated by by comma. e.g."chr3:101651171_C/T,chr3:101651186_G/A". 
+#' @param condition character. For conditional analysis. Variant ids are in the format chr:pos_ref/alt and seperated by by comma. e.g."chr3:101651171:C:T,chr3:101651186:G:A". 
 #' @param weights_for_condition. vector of numeric. weights for conditioning markers for gene- or region-based tests. The length equals to the number of conditioning markers, e.g. c(1,2,3). If not specified, the default weights will be generated based on beta(MAF, 1, 25). Use weights.beta to change the parameters for the Beta distribution. 
 #' @param SPAcutoff by default = 2 (SPA test would be used when p value < 0.05 under the normal approximation)
 #' @param dosage_zerod_cutoff numeric. If is_imputed_data = TRUE, For variants with MAC <= dosage_zerod_MAC_cutoff, dosages <= dosageZerodCutoff with be set to 0. By derault, 0.2
@@ -53,7 +53,6 @@
 #' @param is_output_markerList_in_groupTest logical. Whether to output the marker lists included in the set-based tests for each mask. By default, FALSE
 #' @param is_Firth_beta logical. Whether to estimate effect sizes using approx Firth, only for binary traits. By default, FALSE
 #' @param pCutoffforFirth numeric. p-value cutoff to use approx Firth to estiamte the effect sizes. Only for binary traits. The effect sizes of markers with p-value <= pCutoffforFirth will be estimated using approx Firth. By default, 0.01.
-#' @param IsOutputlogPforSingle logical. Whether to output log(Pvalue) for single-variant assoc tests. By default, FALSE. If TRUE, the log(Pvalue) instead of original P values will be output (Not activated)
 #' @param X_PARregion character. ranges of (pseudoautosomal) PAR region on chromosome X, which are seperated by comma and in the format start:end. By default: '60001-2699520,154931044-155260560' in the UCSC build hg19. For males, there are two X alleles in the PAR region, so PAR regions are treated the same as autosomes. In the NON-PAR regions (outside the specified PAR regions on chromosome X), for males, there is only one X allele. If is_rewrite_XnonPAR_forMales=TRUE, genotypes/dosages of all variants in the NON-PAR regions on chromosome X will be multiplied by 2 (Not activated).
 #' @param is_rewrite_XnonPAR_forMales logical. Whether to rewrite gentoypes or dosages of variants in the NON-PAR regions on chromosome X for males (multiply by 2). By default, FALSE. Note, only use is_rewrite_XnonPAR_forMales=TRUE when the specified VCF or Bgen file only has variants on chromosome X. When is_rewrite_XnonPAR_forMales=TRUE, the program does not check the chromosome value by assuming all variants are on chromosome X (Not activated)
 #' @param sampleFile_male character. Path to the file containing one column for IDs of MALE samples in the bgen or vcf file with NO header. Order does not matter
@@ -111,7 +110,11 @@ SPAGMMATtest = function(bgenFile = "",
 		 is_overwrite_output = TRUE,
 		 is_single_in_groupTest = TRUE,
 		 is_no_weight_in_groupTest = FALSE,
-		 is_output_markerList_in_groupTest = FALSE 
+		 is_output_markerList_in_groupTest = FALSE,
+		 is_fastTest = FALSE,
+		 pval_cutoff_for_fastTest = 0.05, 
+		 max_MAC_use_ER = 4, 
+		 subSampleFile = ""
 ){
    #cat("r.corr is ", r.corr, "\n")
    if(!(impute_method %in% c("best_guess", "mean","minor"))){
@@ -126,7 +129,7 @@ SPAGMMATtest = function(bgenFile = "",
 		     #is_rewrite_XnonPAR_forMales = is_rewrite_XnonPAR_forMales)
 	cat("dosage_zerod_cutoff ", dosage_zerod_cutoff, "\n")
    checkArgsListNumeric(start = 1,
-                     end = 20000000,
+                     end = 250000000,
 		     max_missing = max_missing,
                      min_MAC = min_MAC,
                      min_MAF = min_MAF,
@@ -136,7 +139,8 @@ SPAGMMATtest = function(bgenFile = "",
 		     dosage_zerod_MAC_cutoff = dosage_zerod_MAC_cutoff,
 		     markers_per_chunk = markers_per_chunk,
 		     groups_per_chunk = groups_per_chunk,
-		     minGroupMAC_in_BurdenTest = minGroupMAC_in_BurdenTest
+		     minGroupMAC_in_BurdenTest = minGroupMAC_in_BurdenTest,
+		     max_MAC_use_ER = max_MAC_use_ER
 		     )
 
 
@@ -147,8 +151,7 @@ SPAGMMATtest = function(bgenFile = "",
     #Check_OutputFile_Create(SAIGEOutputFile)
     OutputFile = SAIGEOutputFile
     OutputFileIndex=NULL
-    if(is.null(OutputFileIndex))
-    OutputFileIndex = paste0(OutputFile, ".index") 
+    if(is.null(OutputFileIndex)){OutputFileIndex = paste0(OutputFile, ".index")} 
 
     ##check the variance ratio file and extract the variance ratio vector
     setAssocTest_GlobalVarsInCPP(impute_method,
@@ -159,7 +162,8 @@ SPAGMMATtest = function(bgenFile = "",
 			dosage_zerod_cutoff,
                         dosage_zerod_MAC_cutoff,
 			weights.beta, 
-			OutputFile)	
+			OutputFile,
+			max_MAC_use_ER)	
 
     if(groupFile == ""){
       isGroupTest = FALSE
@@ -189,8 +193,8 @@ SPAGMMATtest = function(bgenFile = "",
 
 
     #if(file.exists(SAIGEOutputFile)) {print("ok -1 file exist")} 
-
-        IsOutputlogPforSingle = FALSE   #to check
+    
+        #IsOutputlogPforSingle = FALSE   #to check
         #OUT_Filename_Single<-sprintf("%s.single",SAIGEOutputFile)
         #Check_OutputFile_Create(OUT_Filename_Single)
       #if (sum(weights.beta.rare != weights.beta.common) > 0) {
@@ -211,13 +215,23 @@ SPAGMMATtest = function(bgenFile = "",
      #cat("dosage_zerod_MAC_cutoff is ", dosage_zerod_MAC_cutoff, "\n")
 
     }
-    
-    ratioVec = Get_Variance_Ratio(varianceRatioFile, cateVarRatioMinMACVecExclude, cateVarRatioMaxMACVecInclude, isGroupTest) #readInGLMM.R
+   
 
 
 
-    obj.model = ReadModel(GMMATmodelFile, chrom, LOCO, is_Firth_beta) #readInGLMM.R
+    if(subSampleFile == ""){
+    	obj.model = ReadModel(GMMATmodelFile, chrom, LOCO, is_Firth_beta) #readInGLMM.R
+    }else{
+    	obj.model = ReadModel_subsample(GMMATmodelFile, chrom, LOCO, is_Firth_beta, subSampleFile) #readInGLMM.R	
+    }
 
+    if(obj.model$traitType == "binary"){
+        if(max_MAC_use_ER > 0){
+             cat("P-values of genetic variants with MAC <= ", max_MAC_use_ER, " will be calculated via effecient resampling.\n")
+        }
+    }else{
+        max_MAC_use_ER = 0
+    }
     
     if(!LOCO){
      #	LOCO = FALSE
@@ -230,17 +244,44 @@ SPAGMMATtest = function(bgenFile = "",
       #sparseSigmaRList = setSparseSigma(sparseSigmaFile)
       sparseSigmaRList = setSparseSigma_new(sparseGRMFile, sparseGRMSampleIDFile, relatednessCutoff, obj.model$sampleID, obj.model$theta, obj.model$mu2,  obj.model$traitType)
       isSparseGRM = TRUE
+
     }else{
+      #if(!is.null(obj.model$useSparseGRMforVarRatio)){
+      #	if(obj.model$useSparseGRMforVarRatio == TRUE){
+      # 		stop("sparse GRM is not specified but it was used in Step 1.\n")
+      #	}	
+      #}		      
       sparseSigmaRList = list(nSubj = 0, locations = matrix(0,nrow=2,ncol=2), values = rep(0,2))  
       isSparseGRM = FALSE 
     }	    
+    ratioVecList = Get_Variance_Ratio(varianceRatioFile, cateVarRatioMinMACVecExclude, cateVarRatioMaxMACVecInclude, isGroupTest, isSparseGRM) #readInGLMM.R
+
+    if(is_fastTest){
+      if(!file.exists(varianceRatioFile)){
+         is_fastTest = FALSE
+	 cat("No variance ratio file is specified, so is_fastTest is not working.\n")
+      }
+    }
+
+
+    if(is_fastTest){
+      if(isSparseGRM){
+	cat("is_fastTest is TRUE.\n")
+	if(ratioVecList$ratioVec_null[1] == -1){
+	  stop("Variance ratios estimated without GRM are not found, so the fast tests can't be performed.\n Please set is_fastTest=FALSE or re-run the variance ratio estimation in Step 1 with --skipModelFitting=TRUE using the most recent version of the program.\n")
+	}else{
+	  cat("The fast tests will be performed (when p-values >= ", pval_cutoff_for_fastTest, ").\n")	
+	}
+      }else{
+          is_fastTest = FALSE
+	  cat("No sparse GRM is specified, so is_fastTest is not working.\n")
+      }
+    }
 
     nsample = length(obj.model$y)
     cateVarRatioMaxMACVecInclude = c(cateVarRatioMaxMACVecInclude, nsample)	
-    #print(names(obj.model$obj.noK))
-
     
-     #in Geno.R
+    #in Geno.R
     objGeno = setGenoInput(bgenFile = bgenFile,
                  bgenFileIndex = bgenFileIndex,
                  vcfFile = vcfFile,   #not activate yet
@@ -258,40 +299,34 @@ SPAGMMATtest = function(bgenFile = "",
                  AlleleOrder = AlleleOrder,
                  sampleInModel = obj.model$sampleID)
 
-    #markerInfo = objGeno$markerInfo
-    #genoIndex = objGeno$markerInfo$genoIndex
-    #genoType = objGeno$dosageFileType
-    genoType = objGeno$genoType
-    #if(!is.null(objGeno$markerInfo)){
-#	if(is.null(objGeno$markerInfo$genoIndex_prev)){
-#		objGeno$markerInfo$genoIndex_prev = c("-1")
-#	}
- #   }
-   if (condition != "") {
+   genoType = objGeno$genoType
+   if(condition != ""){
         isCondition = TRUE
-        #n = length(obj.model$y) #sample size
-        #print(n)
-        #assign_conditionMarkers_factors(genoType, condition_genoIndex,  n)
-    }
-    else {
+	if(is_fastTest){
+		is_fastTest = FALSE
+		cat("is_fastTest is not working for conditional analysis.\n")
+	}
+   }else {
         isCondition = FALSE
-    }
+   }
     
     condition_genoIndex = c(-1)
     if(isCondition){
-        cat("Conducting conditional analysis.\n")
-    }	    
+        cat("Conducting conditional analysis. Please specify the conditioning markers in the order as they are store in the genotype/dosage file.\n")
+    }	   
     #set up the SAIGE object based on the null model results
     setSAIGEobjInCPP(t_XVX=obj.model$obj.noK$XVX,
 		     t_XXVX_inv=obj.model$obj.noK$XXVX_inv,
 		     t_XV=obj.model$obj.noK$XV,
 		     t_XVX_inv_XV=obj.model$obj.noK$XVX_inv_XV,
+		     t_Sigma_iXXSigma_iX=obj.model$Sigma_iXXSigma_iX,
 		     t_X=obj.model$X,
 		     t_S_a=obj.model$obj.noK$S_a,
 		     t_res=obj.model$residuals,
 		     t_mu2=obj.model$mu2,
 		     t_mu=obj.model$mu,
-		     t_varRatio = as.vector(ratioVec),
+		     t_varRatio_sparse = as.vector(ratioVecList$ratioVec_sparse),
+		     t_varRatio_null = as.vector(ratioVecList$ratioVec_null),
 		     t_cateVarRatioMinMACVecExclude = cateVarRatioMinMACVecExclude,
 		     t_cateVarRatioMaxMACVecInclude = cateVarRatioMaxMACVecInclude,
 		     t_SPA_Cutoff = SPAcutoff,
@@ -300,6 +335,8 @@ SPAGMMATtest = function(bgenFile = "",
 		     t_y = obj.model$y,
 		     t_impute_method = impute_method, 
 		     t_flagSparseGRM = isSparseGRM,
+		     t_isFastTest = is_fastTest,
+		     t_pval_cutoff_for_fastTest = pval_cutoff_for_fastTest,
         	     t_locationMat = as.matrix(sparseSigmaRList$locations),
         	     t_valueVec = sparseSigmaRList$values,
         	     t_dimNum = sparseSigmaRList$nSubj, 
@@ -307,16 +344,23 @@ SPAGMMATtest = function(bgenFile = "",
 		     t_condition_genoIndex = condition_genoIndex,
 		     t_is_Firth_beta = is_Firth_beta,
 		     t_pCutoffforFirth = pCutoffforFirth,
-		     t_offset = obj.model$offset)
+		     t_offset = obj.model$offset, 
+		     t_resout = as.integer(obj.model$obj_cc$res.out))
   rm(sparseSigmaRList)
   gc()
    #process condition
     if (isCondition) {
         n = length(obj.model$y) #sample size
+
+	##re-order the conditioning markers
+	##condition_original = unlist(strsplit(condition, ","))
 	condition_genoIndex=extract_genoIndex_condition(condition, objGeno$markerInfo, genoType)
 	if(!is.null(weights_for_condition)){
-                condition_weights = unlist(strsplit(weights_for_condition, ","))
-		if(length(condition_weights) != length(condition_genoIndex$condition_genoIndex)){
+		condition_weights = weights_for_condition
+		#print(condition_weights)
+		#print(condition_genoIndex$cond_genoIndex)
+                #condition_weights = as.numeric(unlist(strsplit(weights_for_condition, ",")))
+		if(length(condition_weights) != length(condition_genoIndex$cond_genoIndex)){
 			stop("The length of the provided weights for conditioning markers is not equal to the number of conditioning markers\n")
 		}	
         }else{
@@ -329,6 +373,8 @@ SPAGMMATtest = function(bgenFile = "",
 	if(obj.model$traitType == "binary" & isGroupTest){
 		outG2cond = RegionSetUpConditional_binary_InCPP(condition_weights)
 
+
+	outG2cond$pval_G2_cond = unlist(lapply(outG2cond$pval_G2_cond,convert_str_to_log))
 
 	G2condList = get_newPhi_scaleFactor(q.sum = outG2cond$qsum_G2_cond, mu.a = obj.model$mu, g.sum = outG2cond$gsum_G2_cond, p.new = outG2cond$pval_G2_cond, Score = outG2cond$Score_G2_cond, Phi = outG2cond$VarMat_G2_cond, "SKAT-O")
 	#print(G2condList)
@@ -375,7 +421,8 @@ SPAGMMATtest = function(bgenFile = "",
                    LOCO,
                    chrom,
 		   isCondition,
-		   is_overwrite_output)
+		   is_overwrite_output,
+		   objGeno$anyInclude)
     }else{
       maxMACbinind = which(maxMAC_in_groupTest > 0)	
       if(length(maxMACbinind) > 0){ 
@@ -416,7 +463,10 @@ SPAGMMATtest = function(bgenFile = "",
 		     is_single_in_groupTest,
 		     is_no_weight_in_groupTest,
 		     is_output_markerList_in_groupTest,
-		     chrom)
+		     chrom,
+		     is_fastTest,
+		     pval_cutoff_for_fastTest,
+		     is_output_moreDetails)
 
 
     }	    

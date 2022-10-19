@@ -12,7 +12,8 @@ SAIGE.Marker = function(traitType,
 			LOCO,
 			chrom,
 			isCondition,
-			isOverWriteOutput)
+			isOverWriteOutput, 
+			isAnyInclude)
 {
 
   if(is.null(OutputFileIndex))
@@ -33,9 +34,6 @@ SAIGE.Marker = function(traitType,
   if(!isOpenOutFile_single){
     stop("Output file ", OutputFile, " can't be opened\n")
   }
-
-
-
 
   ## set up an object for genotype
   if(genoType != "vcf"){
@@ -75,11 +73,13 @@ SAIGE.Marker = function(traitType,
     }
     
   }else{
+   if(!isAnyInclude){	  
     if(chrom == ""){
       stop("chrom needs to be specified for single-variant assoc tests when using VCF as input\n")
     }else{
-      set_iterator_inVcf("", chrom, 1, 200000000)
+      set_iterator_inVcf("", chrom, 1, 250000000)
     }
+   }
     if(outIndex > 1){
 	move_forward_iterator_Vcf(outIndex*nMarkersEachChunk)    
     }
@@ -98,7 +98,7 @@ SAIGE.Marker = function(traitType,
   }
 
   chrom = "InitialChunk"
-
+  #set_flagSparseGRM_cur_SAIGE_org()
   while(is_marker_test){
   #for(i in outIndex:nChunks)
   #{

@@ -40,7 +40,7 @@ updateChrStartEndIndexVec <- function(chrVec){
         if (i > 1) {
        	  if (!is.na(chromosomeStartIndexVec[i -1])) {
             if (chromosomeStartIndexVec[i] <= chromosomeStartIndexVec[i - 1] | chromosomeEndIndexVec[i] <= chromosomeEndIndexVec[i -1]) {
-                          stop(paste0("ERROR! chromosomes need to be ordered from 1 to 22 in ",plinkFile, ".bim\n"))
+                          stop(paste0("ERROR! chromosomes need to be ordered from 1 to 22 in the bim file.\n"))
             }
           }
         }
@@ -63,13 +63,6 @@ updateChrStartEndIndexVec <- function(chrVec){
  setStartEndIndexVec(chromosomeStartIndexVec_forcpp, chromosomeEndIndexVec_forcpp)
  return(list(LOCO = LOCO, chromosomeStartIndexVec = chromosomeStartIndexVec, chromosomeEndIndexVec = chromosomeEndIndexVec))
 }
-
-
-
-
-
-
-
 
 
 
@@ -538,7 +531,7 @@ writeOutputFile = function(Output,
 
   n1 = length(Output)
   n2 = length(OutputFile)
-  print("write to output")
+  cat("write to output\n")
   #cat("n1 is ", n1, "\n")
   #cat("n2 is ", n2, "\n")
   if(n1 != n2)
@@ -589,7 +582,7 @@ writeOutputFileIndex = function(
   message4 = paste("Have completed the analysis of chunk", indexChunk)
   message5 = "Have completed the analyses of all chunks."
 
-  print("write to output")
+  cat("write to output\n")
 
   #print("write Output 2")
   if(Start)
@@ -600,3 +593,14 @@ writeOutputFileIndex = function(
   if(End)
     write.table(message5, OutputFileIndex, quote = F, sep = "\t", append = T, col.names = F, row.names = F)
 }
+
+
+convert_str_to_log = function(a){
+	if(a != "NA"){
+		b = as.numeric(unlist(strsplit(a, split="E")))
+		b1 = b[2]+log10(b[1])
+		d = b1 * log(10)
+	}else{
+		d = NA	
+	}	
+}	

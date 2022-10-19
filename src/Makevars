@@ -15,6 +15,9 @@ PKG_CPPFLAGS += \
 -DUSE_pbdMPI \
 -DUSE_GPU
 
+## new version - check if you need something from here
+#-D SQLITE_ENABLE_COLUMN_METADATA -O3 -fpic -Wall -Wextra -pedantic  -DARMA_64BIT_WORD=1 -D__STDC_FORMAT_MACROS
+
 CXX_STD = CXX11 
 
 # Replace -llapack with openblas.
@@ -29,6 +32,9 @@ OBJECTS = gpuSymMatMult.o RcppExports.o SAIGE_fitGLMM_fast.o getMem.o VCF.o BGEN
 
 %.o: %.cu
 	$(NVCC) -O2 -x cu -c -arch=sm_70 -Xcompiler "-fPIC" $< -o $@
+#OBJECTS = RcppExports.o SAIGE_fitGLMM_fast.o getMem.o VCF.o BGEN.o PLINK.o SAIGE_test.o SPA_binary.o SPA.o SPA_survival.o UTIL.o Main.o test.o CCT.o 
+## check this one out in new version that nothing is missing
+#OBJECTS = RcppExports.o SAIGE_fitGLMM_fast.o getMem.o VCF.o BGEN.o PLINK.o SAIGE_test.o SPA_binary.o SPA.o SPA_survival.o UTIL.o Main.o test.o CCT.o Binary_HyperGeo.o Binary_ComputeExact.o Binary_global.o Binary_ComputeExactSKATO.o Binary_resampling.o Binary_Permu_SKAT.o ER_binary_func.o LDmat.o 
 
 all: $(SHLIB)
 $(SHLIB): ${OBJECTS} Makevars

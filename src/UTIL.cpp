@@ -104,7 +104,7 @@ switch(string_to_case.at(t_impute_method)) {
  t_MAC = t_MAC + imputeG * nMissing;
 
 }
-  
+
   
   if(t_dosage_zerod_cutoff > 0){ 
     if(t_MAC <= t_dosage_zerod_MAC_cutoff){
@@ -189,8 +189,8 @@ double sum_arma1(arma::vec& X) {
 double add_logp(double p1, double p2)
 {
         using namespace Rcpp;
-        p1 = std::abs(p1);
-        p2 = std::abs(p2);
+        p1 = -std::abs(p1);
+        p2 = -std::abs(p2);
         double maxp = std::max(p1,p2);
         double  minp = std::min(p1,p2);
         double result = maxp+std::log(1+std::exp(minp-maxp));
